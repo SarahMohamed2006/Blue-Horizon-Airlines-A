@@ -259,6 +259,43 @@ def get_delayed_flights():
 
     flights = cursor.fetchall()
 
+# Today's Flights
+
+@mcp.resource("flights://today")
+def get_todays_flights():
+    """
+    Return today's flights with origin and destination airports.
+    """
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT
+            f.flight_number,
+            oa.name AS origin,
+            da.name AS destination,
+            f.departure_time,
+            f.arrival_time,
+            f.status
+        FROM Flights f
+
+        JOIN Airports oa
+            ON f.origin_airport_id = oa.airport_id
+
+        JOIN Airports da
+            ON f.destination_airport_id = da.airport_id
+
+        ORDER BY f.departure_time
+    """)
+
+    flights = cursor.fetchall()
+
+    conn.close()
+
+    return [dict(flight) for flight in flights] 
+    
+
     conn.close()
 
     return [dict(f) for f in flights]
