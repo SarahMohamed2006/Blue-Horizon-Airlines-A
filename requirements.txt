@@ -1,0 +1,3 @@
+mcp
+aiosqlite
+python-dotenv
