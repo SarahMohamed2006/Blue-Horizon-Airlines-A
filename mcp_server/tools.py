@@ -1,44 +1,59 @@
 from database import get_connection
 
 
+# ---------------------------------------------------------------------------
 # Assign Aircraft
-
-def assign_aircraft(flight_id: int, aircraft_id: int):
-
+# ---------------------------------------------------------------------------
+def assign_aircraft(flight_id: int, aircraft_id: int, employee_id: int):
+    """
+    Assign an available aircraft to a flight. Requires an authorized
+    employee (Operations Manager or Dispatcher).
+    """
     conn = get_connection()
     cursor = conn.cursor()
 
     # Check flight
     cursor.execute("""
-    SELECT
-        flight_id,
-        status
-    FROM Flights
-    WHERE flight_id=?
-""", (flight_id,))
+        SELECT flight_id, status
+        FROM Flights
+        WHERE flight_id=?
+    """, (flight_id,))
+    flight = cursor.fetchone()
 
-flight = cursor.fetchone()
+    if not flight:
+        conn.close()
+        return {"error": "Flight not found"}
 
-if not flight:
-    conn.close()
-    return {"error": "Flight not found"}
+    if flight["status"] == "Cancelled":
+        conn.close()
+        return {"error": "Cannot assign aircraft to a cancelled flight"}
 
-if flight["status"] == "Cancelled":
-    conn.close()
-    return {"error": "Cannot assign aircraft to a cancelled flight"}
+    if flight["status"] == "Completed":
+        conn.close()
+        return {"error": "Flight already completed"}
 
-if flight["status"] == "Completed":
-    conn.close()
-    return {"error": "Flight already completed"}
-    
-    
+    # Authorization
+    cursor.execute("""
+        SELECT role
+        FROM Employees
+        WHERE employee_id=?
+    """, (employee_id,))
+    employee = cursor.fetchone()
+
+    if not employee:
+        conn.close()
+        return {"error": "Employee not found"}
+
+    if employee["role"] not in ("Operations Manager", "Dispatcher"):
+        conn.close()
+        return {"error": "Unauthorized. Only Operations Manager or Dispatcher can assign aircraft."}
+
     # Check aircraft
     cursor.execute("""
         SELECT status
         FROM Aircraft
         WHERE aircraft_id=?
     """, (aircraft_id,))
-
     aircraft = cursor.fetchone()
 
     if not aircraft:
@@ -54,80 +69,47 @@ if flight["status"] == "Completed":
         SET aircraft_id=?
         WHERE flight_id=?
     """, (aircraft_id, flight_id))
+
     cursor.execute("""
-    INSERT INTO AircraftAssignments
-    (
-        flight_id,
-        aircraft_id,
-        assigned_at,
-        assignment_reason
-    )
-    VALUES
-    (
-        ?,
-        ?,
-        CURRENT_TIMESTAMP,
-        'Operational Assignment'
-    )
-""", (
-    flight_id,
-    aircraft_id
-))
+        INSERT INTO AircraftAssignments
+            (flight_id, aircraft_id, assigned_at, assignment_reason)
+        VALUES (?, ?, CURRENT_TIMESTAMP, 'Operational Assignment')
+    """, (flight_id, aircraft_id))
 
     cursor.execute("""
         UPDATE Aircraft
         SET status='Assigned'
         WHERE aircraft_id=?
     """, (aircraft_id,))
+
     cursor.execute("""
-    INSERT INTO FlightEvents
-    (
-        flight_id,
-        event_type,
-        severity,
-        description,
-        reported_at,
-        status
-    )
-    VALUES
-    (
-        ?,
-        'Aircraft Assigned',
-        'Low',
-        'Replacement aircraft assigned by operations.',
-        CURRENT_TIMESTAMP,
-        'Closed'
-    )
-""", (flight_id,))
+        INSERT INTO FlightEvents
+            (flight_id, event_type, severity, description, reported_at, status)
+        VALUES (?, 'Aircraft Assigned', 'Low', 'Replacement aircraft assigned by operations.', CURRENT_TIMESTAMP, 'Closed')
+    """, (flight_id,))
 
     conn.commit()
     conn.close()
 
-    return {
-        "success": True,
-        "message": "Aircraft assigned successfully"
-    }
+    return {"success": True, "message": "Aircraft assigned successfully"}
 
 
+# ---------------------------------------------------------------------------
 # Assign Backup Crew
-def assign_backup_crew(
-    flight_id: int,
-    crew_id: int
-):
-
+# ---------------------------------------------------------------------------
+def assign_backup_crew(flight_id: int, crew_id: int, employee_id: int):
+    """
+    Assign a crew member to a flight. Requires an authorized employee.
+    """
     conn = get_connection()
     cursor = conn.cursor()
 
     # Check flight
-
     cursor.execute("""
-        SELECT
-            flight_id,
-            status
+        SELECT flight_id, status
         FROM Flights
         WHERE flight_id=?
     """, (flight_id,))
-
     flight = cursor.fetchone()
 
     if not flight:
@@ -138,23 +120,35 @@ def assign_backup_crew(
         conn.close()
         return {"error": "Cannot assign crew to this flight"}
 
-    # Check crew
-
+    # Authorization
     cursor.execute("""
-        SELECT
-            availability,
-            hours_flown_today
+        SELECT role
+        FROM Employees
+        WHERE employee_id=?
+    """, (employee_id,))
+    employee = cursor.fetchone()
+
+    if not employee:
+        conn.close()
+        return {"error": "Employee not found"}
+
+    if employee["role"] not in ("Operations Manager", "Dispatcher"):
+        conn.close()
+        return {"error": "Unauthorized. Only Operations Manager or Dispatcher can assign crew."}
+
+    # Check crew
+    cursor.execute("""
+        SELECT availability, hours_flown_today
         FROM Crew
         WHERE crew_id=?
     """, (crew_id,))
-
     crew = cursor.fetchone()
 
     if not crew:
         conn.close()
         return {"error": "Crew member not found"}
 
-    if crew["availability"] == 0:
+    if not crew["availability"]:
         conn.close()
         return {"error": "Crew member unavailable"}
 
@@ -163,9 +157,8 @@ def assign_backup_crew(
         return {"error": "Crew exceeded duty hours"}
 
     # Prevent duplicate assignment
-
     cursor.execute("""
-        SELECT *
+        SELECT 1
         FROM FlightCrew
         WHERE flight_id=? AND crew_id=?
     """, (flight_id, crew_id))
@@ -174,43 +167,16 @@ def assign_backup_crew(
         conn.close()
         return {"error": "Crew already assigned"}
 
-    # Assign crew
-
     cursor.execute("""
-        INSERT INTO FlightCrew
-        (
-            flight_id,
-            crew_id
-        )
-        VALUES
-        (
-            ?,
-            ?
-        )
-    """, (
-        flight_id,
-        crew_id
-    ))
+        INSERT INTO FlightCrew (flight_id, crew_id)
+        VALUES (?, ?)
+    """, (flight_id, crew_id))
 
     cursor.execute("""
         INSERT INTO CrewAssignments
-        (
-            flight_id,
-            crew_id,
-            assigned_at,
-            assignment_status
-        )
-        VALUES
-        (
-            ?,
-            ?,
-            CURRENT_TIMESTAMP,
-            'Active'
-        )
-    """, (
-        flight_id,
-        crew_id
-    ))
+            (flight_id, crew_id, assigned_at, assignment_status)
+        VALUES (?, ?, CURRENT_TIMESTAMP, 'Active')
+    """, (flight_id, crew_id))
 
     cursor.execute("""
         UPDATE Crew
@@ -220,54 +186,33 @@ def assign_backup_crew(
 
     cursor.execute("""
         INSERT INTO FlightEvents
-        (
-            flight_id,
-            event_type,
-            severity,
-            description,
-            reported_at,
-            status
-        )
-        VALUES
-        (
-            ?,
-            'Backup Crew Assigned',
-            'Low',
-            'Backup crew assigned by Flight Operations.',
-            CURRENT_TIMESTAMP,
-            'Closed'
-        )
+            (flight_id, event_type, severity, description, reported_at, status)
+        VALUES (?, 'Backup Crew Assigned', 'Low', 'Backup crew assigned by Flight Operations.', CURRENT_TIMESTAMP, 'Closed')
     """, (flight_id,))
 
     conn.commit()
     conn.close()
 
-    return {
-        "success": True,
-        "message": "Backup crew assigned successfully"
-    }
+    return {"success": True, "message": "Backup crew assigned successfully"}
 
+
+# ---------------------------------------------------------------------------
 # Reschedule Flight
-def reschedule_flight(
-    flight_id: int,
-    new_departure,
-    new_arrival
-):
-
+# ---------------------------------------------------------------------------
+def reschedule_flight(flight_id: int, new_departure, new_arrival, employee_id: int):
+    """
+    Reschedule a flight's departure/arrival times. Requires an
+    authorized employee.
+    """
     conn = get_connection()
     cursor = conn.cursor()
 
     # Check flight
-
     cursor.execute("""
-        SELECT
-            flight_id,
-            status,
-            departure_time
+        SELECT flight_id, status, departure_time
         FROM Flights
         WHERE flight_id=?
     """, (flight_id,))
-
     flight = cursor.fetchone()
 
     if not flight:
@@ -282,81 +227,60 @@ def reschedule_flight(
         conn.close()
         return {"error": "Completed flights cannot be rescheduled"}
 
-    # Validate times
+    # Authorization
+    cursor.execute("""
+        SELECT role
+        FROM Employees
+        WHERE employee_id=?
+    """, (employee_id,))
+    employee = cursor.fetchone()
 
+    if not employee:
+        conn.close()
+        return {"error": "Employee not found"}
+
+    if employee["role"] not in ("Operations Manager", "Dispatcher"):
+        conn.close()
+        return {"error": "Unauthorized. Only Operations Manager or Dispatcher can reschedule flights."}
+
+    # Validate times
     if new_departure >= new_arrival:
         conn.close()
-        return {
-            "error": "Arrival time must be after departure time"
-        }
-
-    # Update schedule
+        return {"error": "Arrival time must be after departure time"}
 
     cursor.execute("""
         UPDATE Flights
-        SET
-            departure_time=?,
-            arrival_time=?,
-            status='Rescheduled'
+        SET departure_time=?, arrival_time=?, status='Rescheduled'
         WHERE flight_id=?
-    """, (
-        new_departure,
-        new_arrival,
-        flight_id
-    ))
-
-    # Record event
+    """, (new_departure, new_arrival, flight_id))
 
     cursor.execute("""
         INSERT INTO FlightEvents
-        (
-            flight_id,
-            event_type,
-            severity,
-            description,
-            reported_at,
-            status
-        )
-        VALUES
-        (
-            ?,
-            'Flight Rescheduled',
-            'Medium',
-            'Flight schedule updated by Operations Control.',
-            CURRENT_TIMESTAMP,
-            'Closed'
-        )
+            (flight_id, event_type, severity, description, reported_at, status)
+        VALUES (?, 'Flight Rescheduled', 'Medium', 'Flight schedule updated by Operations Control.', CURRENT_TIMESTAMP, 'Closed')
     """, (flight_id,))
 
     conn.commit()
     conn.close()
 
-    return {
-        "success": True,
-        "message": "Flight rescheduled successfully"
-    }
+    return {"success": True, "message": "Flight rescheduled successfully"}
 
 
+# ---------------------------------------------------------------------------
 # Cancel Flight
-def cancel_flight(
-    flight_id: int,
-    employee_id: int,
-    reason: str
-):
-
+# ---------------------------------------------------------------------------
+def cancel_flight(flight_id: int, employee_id: int, reason: str):
+    """
+    Cancel a flight. Requires Operations Manager authorization.
+    """
     conn = get_connection()
     cursor = conn.cursor()
 
-    # Check flight
-
     cursor.execute("""
-        SELECT
-            flight_id,
-            status
+        SELECT flight_id, status
         FROM Flights
         WHERE flight_id=?
     """, (flight_id,))
-
     flight = cursor.fetchone()
 
     if not flight:
@@ -371,14 +295,11 @@ def cancel_flight(
         conn.close()
         return {"error": "Completed flight cannot be cancelled"}
 
-    # Authorization
-
     cursor.execute("""
         SELECT role
         FROM Employees
         WHERE employee_id=?
     """, (employee_id,))
-
     employee = cursor.fetchone()
 
     if not employee:
@@ -387,11 +308,7 @@ def cancel_flight(
 
     if employee["role"] != "Operations Manager":
         conn.close()
-        return {
-            "error": "Unauthorized. Only Operations Manager can cancel flights."
-        }
-
-    # Cancel flight
+        return {"error": "Unauthorized. Only Operations Manager can cancel flights."}
 
     cursor.execute("""
         UPDATE Flights
@@ -399,61 +316,34 @@ def cancel_flight(
         WHERE flight_id=?
     """, (flight_id,))
 
-    # Save event
-
     cursor.execute("""
         INSERT INTO FlightEvents
-        (
-            flight_id,
-            event_type,
-            severity,
-            description,
-            reported_at,
-            status
-        )
-        VALUES
-        (
-            ?,
-            'Flight Cancelled',
-            'High',
-            ?,
-            CURRENT_TIMESTAMP,
-            'Closed'
-        )
-    """, (
-        flight_id,
-        reason
-    ))
+            (flight_id, event_type, severity, description, reported_at, status)
+        VALUES (?, 'Flight Cancelled', 'High', ?, CURRENT_TIMESTAMP, 'Closed')
+    """, (flight_id, reason))
 
     conn.commit()
     conn.close()
 
-    return {
-        "success": True,
-        "message": "Flight cancelled successfully"
-    }
+    return {"success": True, "message": "Flight cancelled successfully"}
 
 
-
+# ---------------------------------------------------------------------------
 # Complete Maintenance
-def complete_maintenance(
-    maintenance_id: int
-):
-
+# ---------------------------------------------------------------------------
+def complete_maintenance(maintenance_id: int, employee_id: int):
+    """
+    Mark a maintenance record complete and return the aircraft to service.
+    Requires Maintenance Engineer or Operations Manager authorization.
+    """
     conn = get_connection()
     cursor = conn.cursor()
 
-    # Check maintenance record
-
     cursor.execute("""
-        SELECT
-            maintenance_id,
-            aircraft_id,
-            status
+        SELECT maintenance_id, aircraft_id, status
         FROM Maintenance
         WHERE maintenance_id=?
     """, (maintenance_id,))
-
     maintenance = cursor.fetchone()
 
     if not maintenance:
@@ -464,7 +354,20 @@ def complete_maintenance(
         conn.close()
         return {"error": "Maintenance already completed"}
 
-    # Complete maintenance
+    cursor.execute("""
+        SELECT role
+        FROM Employees
+        WHERE employee_id=?
+    """, (employee_id,))
+    employee = cursor.fetchone()
+
+    if not employee:
+        conn.close()
+        return {"error": "Employee not found"}
+
+    if employee["role"] not in ("Maintenance Engineer", "Operations Manager"):
+        conn.close()
+        return {"error": "Unauthorized. Only Maintenance Engineer or Operations Manager can close out maintenance."}
 
     cursor.execute("""
         UPDATE Maintenance
@@ -472,33 +375,16 @@ def complete_maintenance(
         WHERE maintenance_id=?
     """, (maintenance_id,))
 
-    # Aircraft becomes available
-
     cursor.execute("""
         UPDATE Aircraft
         SET status='Available'
         WHERE aircraft_id=?
     """, (maintenance["aircraft_id"],))
 
-    # Record event
-
     cursor.execute("""
         INSERT INTO FlightEvents
-        (
-            flight_id,
-            event_type,
-            severity,
-            description,
-            reported_at,
-            status
-        )
-        SELECT
-            flight_id,
-            'Maintenance Completed',
-            'Low',
-            'Aircraft maintenance completed.',
-            CURRENT_TIMESTAMP,
-            'Closed'
+            (flight_id, event_type, severity, description, reported_at, status)
+        SELECT flight_id, 'Maintenance Completed', 'Low', 'Aircraft maintenance completed.', CURRENT_TIMESTAMP, 'Closed'
         FROM Flights
         WHERE aircraft_id=?
         LIMIT 1
@@ -507,198 +393,109 @@ def complete_maintenance(
     conn.commit()
     conn.close()
 
-    return {
-        "success": True,
-        "message": "Maintenance completed successfully"
-    }
+    return {"success": True, "message": "Maintenance completed successfully"}
 
+
+# ---------------------------------------------------------------------------
 # Record Operation Decision
-
-def create_operation_decision(
-    flight_id: int,
-    employee_id: int,
-    decision: str,
-    reason: str
-):
-
+# ---------------------------------------------------------------------------
+def create_operation_decision(flight_id: int, employee_id: int, decision: str, reason: str):
+    """
+    Record an operational decision for a flight (audit trail only —
+    does not execute the decision; see resolve_operational_issue).
+    """
     conn = get_connection()
     cursor = conn.cursor()
-
-    # Check flight
 
     cursor.execute("""
         SELECT status
         FROM Flights
         WHERE flight_id=?
     """, (flight_id,))
-
     flight = cursor.fetchone()
 
     if not flight:
         conn.close()
         return {"error": "Flight not found"}
 
-    # Check employee
-
     cursor.execute("""
         SELECT role
         FROM Employees
         WHERE employee_id=?
     """, (employee_id,))
-
     employee = cursor.fetchone()
 
     if not employee:
         conn.close()
         return {"error": "Employee not found"}
 
-    # Authorization
-
-    allowed_roles = [
-        "Operations Manager",
-        "Flight Operations Officer"
-    ]
-
+    allowed_roles = ["Operations Manager", "Flight Operations Officer"]
     if employee["role"] not in allowed_roles:
         conn.close()
-        return {
-            "error": "Unauthorized employee"
-        }
-
-    # Validate decision
+        return {"error": "Unauthorized employee"}
 
     allowed_decisions = [
-
         "Cancel Flight",
-
         "Reschedule Flight",
-
         "Assign Backup Aircraft",
-
         "Assign Backup Crew",
-
         "Delay Flight",
-
-        "Continue Operations"
-
+        "Continue Operations",
     ]
 
     if decision not in allowed_decisions:
-
         conn.close()
-
-        return {
-
-            "error": "Invalid operational decision"
-
-        }
-
-    # Save decision
+        return {"error": "Invalid operational decision"}
 
     cursor.execute("""
-
         INSERT INTO OperationDecisions
-        (
-            flight_id,
-            employee_id,
-            decision,
-            reason,
-            created_at
-        )
-
-        VALUES
-        (
-            ?,
-            ?,
-            ?,
-            ?,
-            CURRENT_TIMESTAMP
-        )
-
-    """, (
-
-        flight_id,
-
-        employee_id,
-
-        decision,
-
-        reason
-
-    ))
+            (flight_id, employee_id, decision, reason, created_at)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+    """, (flight_id, employee_id, decision, reason))
 
     conn.commit()
-
     conn.close()
 
-    return {
-
-        "success": True,
-
-        "message": "Operation decision recorded"
-
-    }
+    return {"success": True, "message": "Operation decision recorded"}
 
 
+# ---------------------------------------------------------------------------
 # Send Notification
-
-def send_notification(
-    flight_id: int,
-    recipient: str,
-    message: str
-):
-
+# ---------------------------------------------------------------------------
+def send_notification(flight_id: int, recipient: str, message: str):
+    """
+    Queue a notification related to a flight.
+    """
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute("""
         INSERT INTO Notifications
-        (
-            flight_id,
-            recipient,
-            message,
-            sent_at,
-            status
-        )
-        VALUES
-        (
-            ?,
-            ?,
-            ?,
-            CURRENT_TIMESTAMP,
-            'Pending'
-        )
-    """, (
-        flight_id,
-        recipient,
-        message
-    ))
+            (flight_id, recipient, message, sent_at, status)
+        VALUES (?, ?, ?, CURRENT_TIMESTAMP, 'Pending')
+    """, (flight_id, recipient, message))
 
     conn.commit()
     conn.close()
 
-    return {
-        "success": True,
-        "message": "Notification created"
-    }
+    return {"success": True, "message": "Notification created"}
 
 
-def resolve_operational_issue(
-    flight_id: int,
-    employee_id: int,
-    issue_type: str,
-    decision: str,
-    reason: str
-):
+# ---------------------------------------------------------------------------
+# Resolve Operational Issue
+#
+# NOTE: this now delegates to the single-purpose functions above instead
+# of re-implementing their logic inline, so there is exactly one place
+# each business rule (auth, validation, state transition) lives.
+# ---------------------------------------------------------------------------
+def resolve_operational_issue(flight_id: int, employee_id: int, issue_type: str, decision: str, reason: str):
     """
     Resolve an operational issue by executing the selected action
-    and recording the decision.
+    and recording the decision. Delegates to the specific action
+    functions so validation/authorization logic isn't duplicated.
     """
-
     conn = get_connection()
     cursor = conn.cursor()
-
-    # Check flight
 
     cursor.execute("""
         SELECT flight_id
@@ -709,134 +506,65 @@ def resolve_operational_issue(
     if not cursor.fetchone():
         conn.close()
         return {"error": "Flight not found"}
-    
-    # Execute decision
+    conn.close()
 
     if decision == "Cancel Flight":
-
-        cursor.execute("""
-            UPDATE Flights
-            SET status='Cancelled'
-            WHERE flight_id=?
-        """, (flight_id,))
+        result = cancel_flight(flight_id, employee_id, reason)
 
     elif decision == "Reschedule Flight":
-
-        cursor.execute("""
-            UPDATE Flights
-            SET status='Rescheduled'
-            WHERE flight_id=?
-        """, (flight_id,))
+        # Reschedule requires explicit new times; this generic resolver
+        # cannot invent them, so it reports that the caller needs to use
+        # reschedule_flight directly with new_departure/new_arrival.
+        return {"error": "Reschedule requires new_departure/new_arrival — call reschedule_flight directly"}
 
     elif decision == "Assign Backup Aircraft":
-
+        conn = get_connection()
+        cursor = conn.cursor()
         cursor.execute("""
             SELECT aircraft_id
             FROM Aircraft
             WHERE status='Available'
             LIMIT 1
         """)
-
         aircraft = cursor.fetchone()
+        conn.close()
 
         if not aircraft:
-            conn.close()
             return {"error": "No available aircraft"}
 
-        cursor.execute("""
-            UPDATE Flights
-            SET aircraft_id=?
-            WHERE flight_id=?
-        """, (
-            aircraft["aircraft_id"],
-            flight_id
-        ))
-
-        cursor.execute("""
-            UPDATE Aircraft
-            SET status='Assigned'
-            WHERE aircraft_id=?
-        """, (
-            aircraft["aircraft_id"],
-        ))
+        result = assign_aircraft(flight_id, aircraft["aircraft_id"], employee_id)
 
     elif decision == "Assign Backup Crew":
-
+        conn = get_connection()
+        cursor = conn.cursor()
         cursor.execute("""
             SELECT crew_id
             FROM Crew
             WHERE availability=1
             LIMIT 1
         """)
-
         crew = cursor.fetchone()
+        conn.close()
 
         if not crew:
-            conn.close()
             return {"error": "No available crew"}
 
-        cursor.execute("""
-            INSERT INTO FlightCrew
-            (
-                flight_id,
-                crew_id
-            )
-            VALUES (?,?)
-        """, (
-            flight_id,
-            crew["crew_id"]
-        ))
-
-        cursor.execute("""
-            UPDATE Crew
-            SET availability=0
-            WHERE crew_id=?
-        """, (
-            crew["crew_id"],
-        ))
+        result = assign_backup_crew(flight_id, crew["crew_id"], employee_id)
 
     else:
-        conn.close()
         return {"error": "Unknown decision"}
 
-    
-    # Save operation decision
+    if "error" in result:
+        return result
 
-    cursor.execute("""
-        INSERT INTO OperationDecisions
-        (
-            flight_id,
-            employee_id,
-            decision,
-            reason,
-            created_at
-        )
-        VALUES
-        (
-            ?,
-            ?,
-            ?,
-            ?,
-            CURRENT_TIMESTAMP
-        )
-    """, (
-        flight_id,
-        employee_id,
-        decision,
-        reason
-    ))
-
-    conn.commit()
-    conn.close()
+    # Save the operation decision for audit purposes
+    decision_result = create_operation_decision(flight_id, employee_id, decision, reason)
+    if "error" in decision_result:
+        return decision_result
 
     return {
-
         "success": True,
-
         "issue_type": issue_type,
-
         "decision": decision,
-
-        "reason": reason
-
+        "reason": reason,
     }
