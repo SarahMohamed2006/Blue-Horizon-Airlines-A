@@ -2,11 +2,12 @@ from database import get_connection
 from mcp.types import SamplingMessage, TextContent
 from notifications import SessionState
 from elicitation import confirm_cancel_flight
-
+from mcp_app import mcp
 
 # ---------------------------------------------------------------------------
 # Assign Aircraft
 # ---------------------------------------------------------------------------
+@mcp.tool()
 def assign_aircraft(flight_id: int, aircraft_id: int, employee_id: int):
     """
     Assign an available aircraft to a flight. Requires an authorized
@@ -106,6 +107,7 @@ def assign_aircraft(flight_id: int, aircraft_id: int, employee_id: int):
 # ---------------------------------------------------------------------------
 # Assign Backup Crew
 # ---------------------------------------------------------------------------
+@mcp.tool()
 def assign_backup_crew(flight_id: int, crew_id: int, employee_id: int):
     """
     Assign a crew member to a flight. Requires an authorized employee
@@ -212,6 +214,7 @@ def assign_backup_crew(flight_id: int, crew_id: int, employee_id: int):
 # ---------------------------------------------------------------------------
 # Reschedule Flight
 # ---------------------------------------------------------------------------
+@mcp.tool()
 def reschedule_flight(flight_id: int, new_departure, new_arrival, employee_id: int):
     """
     Reschedule a flight's departure/arrival times. Requires an
@@ -285,6 +288,7 @@ def reschedule_flight(flight_id: int, new_departure, new_arrival, employee_id: i
 # ---------------------------------------------------------------------------
 # Cancel Flight
 # ---------------------------------------------------------------------------
+@mcp.tool()
 async def cancel_flight(flight_id: int, employee_id: int, reason: str, ctx):
     """
     Cancel a flight. Requires Operations Manager authorization, an
@@ -361,6 +365,7 @@ async def cancel_flight(flight_id: int, employee_id: int, reason: str, ctx):
 # ---------------------------------------------------------------------------
 # Complete Maintenance
 # ---------------------------------------------------------------------------
+@mcp.tool()
 def complete_maintenance(maintenance_id: int, employee_id: int):
     """
     Mark a maintenance record complete and return the aircraft to service.
@@ -442,6 +447,7 @@ def complete_maintenance(maintenance_id: int, employee_id: int):
 # reviewer sees both what the employee said and an independent read on
 # risk, rather than trusting the free-text reason at face value.
 # ---------------------------------------------------------------------------
+@mcp.tool()
 async def create_operation_decision(flight_id: int, employee_id: int, decision: str, reason: str, ctx):
     """
     Record an operational decision for a flight (audit trail only —
@@ -540,6 +546,7 @@ async def create_operation_decision(flight_id: int, employee_id: int, decision: 
 # ---------------------------------------------------------------------------
 # Send Notification
 # ---------------------------------------------------------------------------
+@mcp.tool()
 def send_notification(flight_id: int, recipient: str, message: str):
     """
     Queue a notification related to a flight.
@@ -566,6 +573,7 @@ def send_notification(flight_id: int, recipient: str, message: str):
 # of re-implementing their logic inline, so there is exactly one place
 # each business rule (auth, validation, state transition) lives.
 # ---------------------------------------------------------------------------
+@mcp.tool()
 async def resolve_operational_issue(flight_id: int, employee_id: int, issue_type: str, decision: str, reason: str, ctx):
     """
     Resolve an operational issue by executing the selected action
@@ -660,6 +668,7 @@ async def resolve_operational_issue(flight_id: int, employee_id: int, issue_type
 # request sees live updates; one that didn't just gets the final result,
 # so this degrades safely for clients without progress support.
 # ---------------------------------------------------------------------------
+@mcp.tool()
 async def generate_operations_report(ctx):
     """
     Build a full operations snapshot across all active flights,
