@@ -1,27 +1,19 @@
 """
 Notification helpers for Blue Horizon Flight Operations.
-
-Two different things live in this file, and they are NOT the same
-concept even though both are called "notifications":
-
-1. Event payloads (below) — plain dicts describing something that
-   happened. These are NOT MCP protocol notifications. No client
-   ever receives these directly; they're used as the `message`
-   content when writing a row to the Notifications table via
-   send_notification() in tools.py. Keep using them for that.
-
-2. session_state / notify_tools_changed (bottom of file) — this is
-   the real MCP notification. It tracks whether the current session
-   has authenticated as an Operations Manager, and pushes an actual
-   `notifications/tools/list_changed` message when that changes,
-   so write tools (cancel_flight, assign_aircraft, etc.) appear for
-   the client without a reconnect.
 """
 
+from mcp.server.fastmcp import Context
+from mcp.types import ToolListChangedNotification
 
-# ---------------------------------------------------------------------------
-# Event payloads — used as Notifications table content, not protocol messages
-# ---------------------------------------------------------------------------
+from mcp_app import mcp
+from database import get_connection
+
+
+# --------------------------------------------------------------------
+# Event payload helpers
+# These are NOT MCP tools.
+# They only build notification payloads used by send_notification().
+# --------------------------------------------------------------------
 
 def flight_cancelled(flight_number: str):
     return {
@@ -39,7 +31,10 @@ def flight_rescheduled(flight_number: str):
     }
 
 
-def aircraft_assigned(flight_number: str, aircraft_id: int):
+def aircraft_assigned(
+    flight_number: str,
+    aircraft_id: int
+):
     return {
         "event": "aircraft.assigned",
         "message": "Aircraft assigned successfully.",
@@ -48,7 +43,10 @@ def aircraft_assigned(flight_number: str, aircraft_id: int):
     }
 
 
-def backup_crew_assigned(flight_number: str, crew_id: int):
+def backup_crew_assigned(
+    flight_number: str,
+    crew_id: int
+):
     return {
         "event": "crew.assigned",
         "message": "Backup crew assigned successfully.",
@@ -57,7 +55,9 @@ def backup_crew_assigned(flight_number: str, crew_id: int):
     }
 
 
-def maintenance_completed(maintenance_id: int):
+def maintenance_completed(
+    maintenance_id: int
+):
     return {
         "event": "maintenance.completed",
         "message": "Maintenance completed successfully.",
@@ -65,7 +65,9 @@ def maintenance_completed(maintenance_id: int):
     }
 
 
-def operation_decision_recorded(decision_id: int):
+def operation_decision_recorded(
+    decision_id: int
+):
     return {
         "event": "operation.decision.recorded",
         "message": "Operation decision recorded successfully.",
@@ -73,7 +75,9 @@ def operation_decision_recorded(decision_id: int):
     }
 
 
-def notification_sent(recipient: str):
+def notification_sent(
+    recipient: str
+):
     return {
         "event": "notification.sent",
         "message": "Notification sent successfully.",
@@ -81,76 +85,90 @@ def notification_sent(recipient: str):
     }
 
 
-# ---------------------------------------------------------------------------
-# Real tools/list_changed notification
-#
-# Trigger: a session starts read-only. Calling authenticate_manager()
-# with a valid Operations Manager employee_id flips session_state and
-# pushes a genuine notifications/tools/list_changed message so write
-# tools appear without the client reconnecting.
-#
-# NOTE: this uses ctx.session.send_notification(...) with a raw
-# ToolListChangedNotification, which is the low-level call available
-# on any MCP server session regardless of FastMCP version. If your
-# installed FastMCP version exposes a higher-level helper (some do,
-# e.g. ctx.session.send_tool_list_changed()), you can swap to that —
-# check `python -c "from mcp.server.session import ServerSession;
-# print([m for m in dir(ServerSession) if 'tool' in m.lower()])"`
-# against your actual installed package to confirm which is available.
-# ---------------------------------------------------------------------------
-
-from database import get_connection
-from mcp.types import ToolListChangedNotification, ServerNotification
-
+# --------------------------------------------------------------------
+# Session state
+# --------------------------------------------------------------------
 
 class SessionState:
-    """
-    Tracks per-server authentication state.
-    NOTE: this is a simple module-level flag suitable for a single-session
-    stdio demo. For real multi-client streamable-HTTP use, this needs to
-    be keyed per session (e.g. by ctx.session or a session id) instead of
-    being global.
-    """
-    authenticated_manager_id: int | None = None
+
+    manager_id = None
 
     @classmethod
-    def is_manager_authenticated(cls) -> bool:
-        return cls.authenticated_manager_id is not None
+    def is_authenticated(cls):
+        return cls.manager_id is not None
 
 
-async def authenticate_manager(employee_id: int, ctx) -> dict:
+# --------------------------------------------------------------------
+# Authentication Tool
+# --------------------------------------------------------------------
+
+@mcp.tool()
+async def authenticate_manager(
+    employee_id: int,
+    ctx: Context
+):
     """
-    Authenticate an Operations Manager for this session. On success,
-    flips session state and pushes a real tools/list_changed
-    notification so write tools become available.
+    Authenticate an Operations Manager.
+    Enables privileged write tools.
     """
+
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT role FROM Employees WHERE employee_id=?", (employee_id,))
+
+    cursor.execute("""
+        SELECT role
+        FROM Employees
+        WHERE employee_id=?
+    """, (employee_id,))
+
     employee = cursor.fetchone()
+
     conn.close()
 
     if not employee:
-        return {"error": "Employee not found"}
+        return {
+            "success": False,
+            "error": "Employee not found"
+        }
 
     if employee["role"] != "Operations Manager":
-        return {"error": "Only an Operations Manager can authenticate for elevated access"}
+        return {
+            "success": False,
+            "error": "Only Operations Managers may authenticate."
+        }
 
-    SessionState.authenticated_manager_id = employee_id
+    SessionState.manager_id = employee_id
+
     await notify_tools_changed(ctx)
 
-    return {"success": True, "message": "Authenticated. Write tools are now available."}
+    return {
+        "success": True,
+        "message": "Manager authenticated successfully."
+    }
 
+
+# --------------------------------------------------------------------
+# Helper
+# --------------------------------------------------------------------
 
 def deauthenticate_manager():
-    """Clear elevated session state (e.g. on logout/session end)."""
-    SessionState.authenticated_manager_id = None
+
+    SessionState.manager_id = None
 
 
-async def notify_tools_changed(ctx):
+# --------------------------------------------------------------------
+# MCP Notification
+# --------------------------------------------------------------------
+
+async def notify_tools_changed(
+    ctx: Context
+):
     """
-    Push the actual notifications/tools/list_changed protocol message.
+    Notify the client that the available tool list changed.
     """
+
     await ctx.session.send_notification(
-        ServerNotification(ToolListChangedNotification(method="notifications/tools/list_changed"))
+        ToolListChangedNotification(
+            method="notifications/tools/list_changed"
+        )
     )
