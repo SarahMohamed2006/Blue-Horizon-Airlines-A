@@ -1,5 +1,7 @@
 from database import get_connection
 from mcp.types import SamplingMessage, TextContent
+from notifications import SessionState
+from elicitation import confirm_cancel_flight
 
 
 # ---------------------------------------------------------------------------
@@ -8,8 +10,14 @@ from mcp.types import SamplingMessage, TextContent
 def assign_aircraft(flight_id: int, aircraft_id: int, employee_id: int):
     """
     Assign an available aircraft to a flight. Requires an authorized
-    employee (Operations Manager or Dispatcher).
+    employee (Operations Manager or Dispatcher) AND a session that has
+    authenticated via authenticate_manager (see notifications.py) — this
+    tool is only meaningfully available after that session-level auth,
+    which is what the tools/list_changed push signals to the client.
     """
+    if not SessionState.is_manager_authenticated():
+        return {"error": "This action requires an authenticated session. Call authenticate_manager first."}
+
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -100,8 +108,12 @@ def assign_aircraft(flight_id: int, aircraft_id: int, employee_id: int):
 # ---------------------------------------------------------------------------
 def assign_backup_crew(flight_id: int, crew_id: int, employee_id: int):
     """
-    Assign a crew member to a flight. Requires an authorized employee.
+    Assign a crew member to a flight. Requires an authorized employee
+    and an authenticated session.
     """
+    if not SessionState.is_manager_authenticated():
+        return {"error": "This action requires an authenticated session. Call authenticate_manager first."}
+
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -203,8 +215,11 @@ def assign_backup_crew(flight_id: int, crew_id: int, employee_id: int):
 def reschedule_flight(flight_id: int, new_departure, new_arrival, employee_id: int):
     """
     Reschedule a flight's departure/arrival times. Requires an
-    authorized employee.
+    authorized employee and an authenticated session.
     """
+    if not SessionState.is_manager_authenticated():
+        return {"error": "This action requires an authenticated session. Call authenticate_manager first."}
+
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -270,15 +285,23 @@ def reschedule_flight(flight_id: int, new_departure, new_arrival, employee_id: i
 # ---------------------------------------------------------------------------
 # Cancel Flight
 # ---------------------------------------------------------------------------
-def cancel_flight(flight_id: int, employee_id: int, reason: str):
+async def cancel_flight(flight_id: int, employee_id: int, reason: str, ctx):
     """
-    Cancel a flight. Requires Operations Manager authorization.
+    Cancel a flight. Requires Operations Manager authorization, an
+    authenticated session, AND explicit human confirmation via
+    elicitation/create before the cancellation is committed — this is
+    the highest-stakes write tool (it directly affects passengers), so
+    it's the one gated on a real elicitation pause rather than proceeding
+    the moment authorization checks pass.
     """
+    if not SessionState.is_manager_authenticated():
+        return {"error": "This action requires an authenticated session. Call authenticate_manager first."}
+
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT flight_id, status
+        SELECT flight_id, flight_number, status
         FROM Flights
         WHERE flight_id=?
     """, (flight_id,))
@@ -311,6 +334,12 @@ def cancel_flight(flight_id: int, employee_id: int, reason: str):
         conn.close()
         return {"error": "Unauthorized. Only Operations Manager can cancel flights."}
 
+    # --- Elicitation: pause for explicit human confirmation before committing ---
+    confirmed = await confirm_cancel_flight(ctx, flight["flight_number"], reason)
+    if not confirmed:
+        conn.close()
+        return {"error": "Cancellation not confirmed"}
+
     cursor.execute("""
         UPDATE Flights
         SET status='Cancelled'
@@ -335,8 +364,12 @@ def cancel_flight(flight_id: int, employee_id: int, reason: str):
 def complete_maintenance(maintenance_id: int, employee_id: int):
     """
     Mark a maintenance record complete and return the aircraft to service.
-    Requires Maintenance Engineer or Operations Manager authorization.
+    Requires Maintenance Engineer or Operations Manager authorization,
+    and an authenticated session.
     """
+    if not SessionState.is_manager_authenticated():
+        return {"error": "This action requires an authenticated session. Call authenticate_manager first."}
+
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -554,7 +587,7 @@ async def resolve_operational_issue(flight_id: int, employee_id: int, issue_type
     conn.close()
 
     if decision == "Cancel Flight":
-        result = cancel_flight(flight_id, employee_id, reason)
+        result = await cancel_flight(flight_id, employee_id, reason, ctx)
 
     elif decision == "Reschedule Flight":
         # Reschedule requires explicit new times; this generic resolver
