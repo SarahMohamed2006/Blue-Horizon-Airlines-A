@@ -6,6 +6,8 @@ from mcp.server.fastmcp import Context
 from notifications import SessionState
 from elicitation import confirm_cancel_flight
 from mcp_app import mcp
+from schemas import CancelFlightInput
+
 
 DecisionType = Literal[
     "Cancel Flight",
@@ -301,7 +303,11 @@ def reschedule_flight(flight_id: int, new_departure, new_arrival, employee_id: i
 # Cancel Flight
 # ---------------------------------------------------------------------------
 @mcp.tool()
-async def cancel_flight(flight_id: int, employee_id: int, reason: str, ctx: Context):
+async def cancel_flight(
+    data: CancelFlightInput,
+    ctx: Context
+):
+
     """
     Cancel a flight. Requires Operations Manager authorization, an
     authenticated session, AND explicit human confirmation via
@@ -310,6 +316,10 @@ async def cancel_flight(flight_id: int, employee_id: int, reason: str, ctx: Cont
     it's the one gated on a real elicitation pause rather than proceeding
     the moment authorization checks pass.
     """
+    flight_id = data.flight_id
+    employee_id = data.employee_id
+    reason = data.reason
+    
     if not SessionState.is_manager_authenticated():
         return {"error": "This action requires an authenticated session. Call authenticate_manager first."}
 
@@ -616,7 +626,14 @@ async def resolve_operational_issue(flight_id: int, employee_id: int, issue_type
     conn.close()
 
     if decision == "Cancel Flight":
-        result = await cancel_flight(flight_id, employee_id, reason, ctx)
+     result = await cancel_flight(
+        CancelFlightInput(
+            flight_id=flight_id,
+            employee_id=employee_id,
+            reason=reason
+        ),
+        ctx
+    )
 
     elif decision == "Reschedule Flight":
         # Reschedule requires explicit new times; this generic resolver
