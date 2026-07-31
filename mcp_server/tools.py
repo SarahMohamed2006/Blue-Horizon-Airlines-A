@@ -453,6 +453,10 @@ async def create_operation_decision(flight_id: int, employee_id: int, decision: 
     Record an operational decision for a flight (audit trail only —
     does not execute the decision; see resolve_operational_issue).
     """
+    if not SessionState.is_manager_authenticated():
+    return {
+        "error": "This action requires an authenticated session."
+    }
     conn = get_connection()
     cursor = conn.cursor()
 
