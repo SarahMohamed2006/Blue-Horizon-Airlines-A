@@ -91,11 +91,11 @@ def notification_sent(
 
 class SessionState:
 
-    manager_id = None
+    authenticated_manager_id : int | None = None
 
     @classmethod
-    def is_authenticated(cls):
-        return cls.manager_id is not None
+    def is_manager_authenticated(cls):
+        return cls.authenticated_manager_id is not None
 
 
 # --------------------------------------------------------------------
@@ -137,7 +137,7 @@ async def authenticate_manager(
             "error": "Only Operations Managers may authenticate."
         }
 
-    SessionState.manager_id = employee_id
+    SessionState.authenticated_manager_id = employee_id
 
     await notify_tools_changed(ctx)
 
@@ -153,9 +153,12 @@ async def authenticate_manager(
 
 def deauthenticate_manager():
 
-    SessionState.manager_id = None
+    SessionState.authenticated_manager_id = None
 
-
+    return {
+        "success": True,
+        "message": "Manager logged out."
+    }
 # --------------------------------------------------------------------
 # MCP Notification
 # --------------------------------------------------------------------
