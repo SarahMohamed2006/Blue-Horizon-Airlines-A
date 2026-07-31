@@ -613,3 +613,83 @@ async def resolve_operational_issue(flight_id: int, employee_id: int, issue_type
         "decision": decision,
         "reason": reason,
     }
+
+
+# ---------------------------------------------------------------------------
+# Generate Operations Report
+#
+# PROGRESS TRACKING: this pulls full status (flight, aircraft, crew,
+# destination weather) for every non-completed, non-cancelled flight.
+# For a large operation this is genuinely slow — several queries per
+# flight, not one lookup — so instead of blocking with no feedback until
+# the whole thing finishes, it reports progress after each flight via
+# ctx.report_progress(). A client that included a progress token in its
+# request sees live updates; one that didn't just gets the final result,
+# so this degrades safely for clients without progress support.
+# ---------------------------------------------------------------------------
+async def generate_operations_report(ctx):
+    """
+    Build a full operations snapshot across all active flights,
+    reporting progress as each flight is processed.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT flight_id, flight_number, destination_airport_id, aircraft_id
+        FROM Flights
+        WHERE status NOT IN ('Completed', 'Cancelled')
+        ORDER BY flight_id
+    """)
+    flights = cursor.fetchall()
+    conn.close()
+
+    total = len(flights)
+    report = []
+
+    for i, flight in enumerate(flights, start=1):
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT tail_number, model, status
+            FROM Aircraft
+            WHERE aircraft_id=?
+        """, (flight["aircraft_id"],))
+        aircraft = cursor.fetchone()
+
+        cursor.execute("""
+            SELECT c.name, c.role
+            FROM Crew c
+            JOIN FlightCrew fc ON c.crew_id = fc.crew_id
+            WHERE fc.flight_id=?
+        """, (flight["flight_id"],))
+        crew = cursor.fetchall()
+
+        cursor.execute("""
+            SELECT weather, runway_status
+            FROM Airports
+            WHERE airport_id=?
+        """, (flight["destination_airport_id"],))
+        weather = cursor.fetchone()
+
+        conn.close()
+
+        report.append({
+            "flight_number": flight["flight_number"],
+            "aircraft": dict(aircraft) if aircraft else None,
+            "crew": [dict(c) for c in crew],
+            "destination_weather": dict(weather) if weather else None,
+        })
+
+        await ctx.report_progress(
+            progress=i,
+            total=total,
+            message=f"Processed flight {flight['flight_number']} ({i}/{total})",
+        )
+
+    return {
+        "success": True,
+        "flights_processed": total,
+        "report": report,
+    }
