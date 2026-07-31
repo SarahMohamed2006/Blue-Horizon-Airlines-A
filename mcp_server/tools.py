@@ -1,8 +1,20 @@
+from typing import Literal
+
 from database import get_connection
 from mcp.types import SamplingMessage, TextContent
+from mcp.server.fastmcp import Context
 from notifications import SessionState
 from elicitation import confirm_cancel_flight
 from mcp_app import mcp
+
+DecisionType = Literal[
+    "Cancel Flight",
+    "Reschedule Flight",
+    "Assign Backup Aircraft",
+    "Assign Backup Crew",
+    "Delay Flight",
+    "Continue Operations",
+]
 
 # ---------------------------------------------------------------------------
 # Assign Aircraft
@@ -289,7 +301,7 @@ def reschedule_flight(flight_id: int, new_departure, new_arrival, employee_id: i
 # Cancel Flight
 # ---------------------------------------------------------------------------
 @mcp.tool()
-async def cancel_flight(flight_id: int, employee_id: int, reason: str, ctx):
+async def cancel_flight(flight_id: int, employee_id: int, reason: str, ctx: Context):
     """
     Cancel a flight. Requires Operations Manager authorization, an
     authenticated session, AND explicit human confirmation via
@@ -339,7 +351,12 @@ async def cancel_flight(flight_id: int, employee_id: int, reason: str, ctx):
         return {"error": "Unauthorized. Only Operations Manager can cancel flights."}
 
     # --- Elicitation: pause for explicit human confirmation before committing ---
-    confirmed = await confirm_cancel_flight(ctx, flight["flight_number"], reason)
+    try:
+        confirmed = await confirm_cancel_flight(ctx, flight["flight_number"], reason)
+    except Exception as exc:
+        conn.close()
+        return {"error": f"This action requires a client with elicitation support to confirm cancellation: {exc}"}
+
     if not confirmed:
         conn.close()
         return {"error": "Cancellation not confirmed"}
@@ -448,15 +465,15 @@ def complete_maintenance(maintenance_id: int, employee_id: int):
 # risk, rather than trusting the free-text reason at face value.
 # ---------------------------------------------------------------------------
 @mcp.tool()
-async def create_operation_decision(flight_id: int, employee_id: int, decision: str, reason: str, ctx):
+async def create_operation_decision(flight_id: int, employee_id: int, decision: DecisionType, reason: str, ctx: Context):
     """
     Record an operational decision for a flight (audit trail only —
     does not execute the decision; see resolve_operational_issue).
     """
     if not SessionState.is_manager_authenticated():
-    return {
-        "error": "This action requires an authenticated session."
-    }
+        return {
+            "error": "This action requires an authenticated session."
+        }
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -578,7 +595,7 @@ def send_notification(flight_id: int, recipient: str, message: str):
 # each business rule (auth, validation, state transition) lives.
 # ---------------------------------------------------------------------------
 @mcp.tool()
-async def resolve_operational_issue(flight_id: int, employee_id: int, issue_type: str, decision: str, reason: str, ctx):
+async def resolve_operational_issue(flight_id: int, employee_id: int, issue_type: str, decision: DecisionType, reason: str, ctx: Context):
     """
     Resolve an operational issue by executing the selected action
     and recording the decision. Delegates to the specific action
@@ -673,7 +690,7 @@ async def resolve_operational_issue(flight_id: int, employee_id: int, issue_type
 # so this degrades safely for clients without progress support.
 # ---------------------------------------------------------------------------
 @mcp.tool()
-async def generate_operations_report(ctx):
+async def generate_operations_report(ctx: Context):
     """
     Build a full operations snapshot across all active flights,
     reporting progress as each flight is processed.
