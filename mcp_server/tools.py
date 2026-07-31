@@ -1,4 +1,5 @@
 from database import get_connection
+from mcp.types import SamplingMessage, TextContent
 
 
 # ---------------------------------------------------------------------------
@@ -398,8 +399,17 @@ def complete_maintenance(maintenance_id: int, employee_id: int):
 
 # ---------------------------------------------------------------------------
 # Record Operation Decision
+#
+# SAMPLING: before saving, this asks the CLIENT's model (via
+# ctx.session.create_message, i.e. sampling/createMessage) to produce a
+# short risk assessment of the decision. This is genuine reasoning the
+# server itself doesn't do — the server has no LLM of its own here, and
+# an employee's typed `reason` isn't checked against anything. The
+# generated assessment is stored alongside the decision so a later
+# reviewer sees both what the employee said and an independent read on
+# risk, rather than trusting the free-text reason at face value.
 # ---------------------------------------------------------------------------
-def create_operation_decision(flight_id: int, employee_id: int, decision: str, reason: str):
+async def create_operation_decision(flight_id: int, employee_id: int, decision: str, reason: str, ctx):
     """
     Record an operational decision for a flight (audit trail only —
     does not execute the decision; see resolve_operational_issue).
@@ -447,16 +457,51 @@ def create_operation_decision(flight_id: int, employee_id: int, decision: str, r
         conn.close()
         return {"error": "Invalid operational decision"}
 
+    # --- Sampling: ask the client's model for an independent risk read ---
+    risk_assessment = ""
+    try:
+        sampling_result = await ctx.session.create_message(
+            messages=[
+                SamplingMessage(
+                    role="user",
+                    content=TextContent(
+                        type="text",
+                        text=(
+                            f"An airline operations decision is being recorded.\n"
+                            f"Flight ID: {flight_id}\n"
+                            f"Decision: {decision}\n"
+                            f"Employee-stated reason: {reason}\n\n"
+                            "In 2-3 sentences, assess the operational risk of this "
+                            "decision and note anything the stated reason does not "
+                            "address (e.g. passenger impact, downstream schedule "
+                            "effects, crew duty limits)."
+                        ),
+                    ),
+                )
+            ],
+            max_tokens=200,
+        )
+        if sampling_result.content.type == "text":
+            risk_assessment = sampling_result.content.text
+    except Exception as exc:
+        # Client may not support sampling, or may decline. Don't block the
+        # decision on it — record that no assessment was available.
+        risk_assessment = f"(risk assessment unavailable: {exc})"
+
     cursor.execute("""
         INSERT INTO OperationDecisions
-            (flight_id, employee_id, decision, reason, created_at)
-        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-    """, (flight_id, employee_id, decision, reason))
+            (flight_id, employee_id, decision, reason, risk_assessment, created_at)
+        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    """, (flight_id, employee_id, decision, reason, risk_assessment))
 
     conn.commit()
     conn.close()
 
-    return {"success": True, "message": "Operation decision recorded"}
+    return {
+        "success": True,
+        "message": "Operation decision recorded",
+        "risk_assessment": risk_assessment,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -488,7 +533,7 @@ def send_notification(flight_id: int, recipient: str, message: str):
 # of re-implementing their logic inline, so there is exactly one place
 # each business rule (auth, validation, state transition) lives.
 # ---------------------------------------------------------------------------
-def resolve_operational_issue(flight_id: int, employee_id: int, issue_type: str, decision: str, reason: str):
+async def resolve_operational_issue(flight_id: int, employee_id: int, issue_type: str, decision: str, reason: str, ctx):
     """
     Resolve an operational issue by executing the selected action
     and recording the decision. Delegates to the specific action
@@ -558,7 +603,7 @@ def resolve_operational_issue(flight_id: int, employee_id: int, issue_type: str,
         return result
 
     # Save the operation decision for audit purposes
-    decision_result = create_operation_decision(flight_id, employee_id, decision, reason)
+    decision_result = await create_operation_decision(flight_id, employee_id, decision, reason, ctx)
     if "error" in decision_result:
         return decision_result
 
