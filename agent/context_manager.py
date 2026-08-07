@@ -14,6 +14,7 @@ class ContextManager:
     """
 
     def __init__(self, window_size=10, recent_size=5):
+
         if window_size <= 0:
             raise ValueError("window_size must be greater than 0")
 
@@ -23,7 +24,8 @@ class ContextManager:
         self.window_size = window_size
         self.recent_size = recent_size
 
-        # Keep the original conversation history.
+        # Keep the complete conversation history.
+        # Each strategy works on the same original context.
         self.history = []
 
     # ============================================================
@@ -177,8 +179,8 @@ class ContextManager:
             - rescheduling
         """
 
-        critical = []
-        normal = []
+        important = []
+        recent = []
 
         critical_keywords = [
             "cancel",
@@ -207,15 +209,28 @@ class ContextManager:
                 keyword in text
                 for keyword in critical_keywords
             ):
-                critical.append(message)
-            else:
-                normal.append(message)
+                important.append(message)
 
         # Always preserve recent observations.
-        recent = self.history[-self.recent_size:]
+        recent = list(self.history[-self.recent_size:])
+
+        # Remove duplicates while preserving order.
+        unique_important = []
+        seen = set()
+
+        for message in important:
+
+            key = (
+                message["role"],
+                message["content"]
+            )
+
+            if key not in seen:
+                unique_important.append(message)
+                seen.add(key)
 
         return {
-            "important": critical,
+            "important": unique_important,
             "recent": recent
         }
 
@@ -257,22 +272,26 @@ class ContextManager:
 
         latency = perf_counter() - start
 
-        tokens = self.estimate_tokens(
-            result if isinstance(result, list)
-            else (
-                result.get("important", [])
-                + result.get("recent", [])
-            )
-        )
+        # Convert dictionary output into a list for token estimation.
+        if isinstance(result, dict):
+            messages = []
+
+            if "important" in result:
+                messages.extend(result["important"])
+
+            if "recent" in result:
+                messages.extend(result["recent"])
+
+            result_for_tokens = messages
+
+        else:
+            result_for_tokens = result
+
+        tokens = self.estimate_tokens(result_for_tokens)
 
         return {
             "strategy": strategy,
-            "messages": (
-                len(result)
-                if isinstance(result, list)
-                else len(result.get("important", []))
-                + len(result.get("recent", []))
-            ),
+            "messages": len(result_for_tokens),
             "tokens": tokens,
             "latency_ms": round(latency * 1000, 4),
             "result": result
