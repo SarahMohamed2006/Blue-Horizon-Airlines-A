@@ -158,3 +158,60 @@ def check_capabilities(result):
         )
 
     return data
+async def run_demo(session: ClientSession):
+    print("\n### 1) INITIALIZE / CAPABILITY NEGOTIATION ###")
+
+    init_result = await session.initialize()
+    caps = check_capabilities(init_result)
+
+    print("\n### 2) RESOURCES ###")
+    try:
+        resources = await session.list_resources()
+        print(f"Available resources: {[r.uri for r in resources.resources]}")
+    except Exception as e:
+        print(f"Resources error: {e}")
+
+    print("\n### 3) PROMPTS ###")
+    try:
+        prompts = await session.list_prompts()
+        print(f"Available prompts: {[p.name for p in prompts.prompts]}")
+    except Exception as e:
+        print(f"Prompts error: {e}")
+
+    print("\n### 4) TOOLS ###")
+    try:
+        tools = await session.list_tools()
+        print(f"Available tools: {[t.name for t in tools.tools]}")
+    except Exception as e:
+        print(f"Tools error: {e}")
+
+    print("\n### 5) DONE ###")
+
+
+async def main():
+    mode = sys.argv[1] if len(sys.argv) > 1 else "stdio"
+
+    if mode == "http":
+        async with streamablehttp_client(HTTP_SERVER_URL) as (read, write, _):
+            async with ClientSession(
+                read,
+                write,
+            ) as session:
+                await run_demo(session)
+
+    else:
+        server_params = StdioServerParameters(
+            command="python",
+            args=[SERVER_SCRIPT_PATH],
+        )
+
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(
+                read,
+                write,
+            ) as session:
+                await run_demo(session)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
