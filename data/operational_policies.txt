@@ -1,0 +1,17 @@
+Blue Horizon Airlines Extended Operational Manual & Policies:
+
+1. Maintenance & Backup Aircraft Policy:
+- Trigger Thresholds: Any unscheduled maintenance event causing or projected to cause a flight departure delay exceeding 120 minutes requires an immediate operational evaluation for backup aircraft deployment.
+- Backup Evaluation & Dispatch: The Duty Operations Manager (DOM) must review aircraft availability at the hub station within 15 minutes of threshold breach. If an aircraft is assigned, dispatch must re-clear the flight route and issue updated flight plans within 30 minutes.
+- Crew Reassignment Timeframe: When a backup aircraft is deployed, flight and cabin crew reassignment must be completed and confirmed within 45 minutes of the deployment decision.
+- Logging Requirements: Line maintenance leads are strictly required to log a full discrepancy entry, including part numbers, technician IDs, and expected return-to-service (RTS) times, into the operational database before the backup aircraft departs.
+
+2. Flight Delay & Weather Disruptions:
+- Passenger Services Coordination: In the event of severe weather-related delays exceeding 60 minutes, Flight Operations must immediately notify Passenger Services to initiate automated customer communications and rebooking protocols.
+- Secondary Aircraft Reassignment Controls: If a flight number or tail number was delayed due to weather conditions within the preceding 24 hours, any secondary aircraft reassignment or tail-swap requires explicit written or system approval from the Operational Supervisor on duty.
+- Diversion Management: In severe convective weather requiring flight diversion to an alternate airport, ground handling and refueling must be prioritized to target a maximum tarmac gate-to-gate turnaround time of 90 minutes.
+
+3. Crew Reassignment Rules & Duty Period (FDP) Limits:
+- Flight Duty Period (FDP) Cap: No flight crew member may be reassigned to a flight if the total duty time will exceed the legal maximum Flight Duty Period (FDP) limits defined by aviation safety regulations.
+- Rest Period Requirements: Reassigned crew members who complete an extended duty shift following a delay or disruption must receive a mandatory, uninterrupted duty rest period of at least 10 hours at the hotel/rest facility before being eligible for their next flight assignment.
+- Fatigue Risk Management: Any crew member subject to more than two reassignments within a single 60-hour window must complete a mandatory digital fatigue self-assessment prior to flight deck entry.
