@@ -6,7 +6,11 @@ from mcp.server.fastmcp import Context
 from notifications import SessionState
 from elicitation import confirm_cancel_flight
 from mcp_app import mcp
-from schemas import CancelFlightInput
+from schemas import (
+    CancelFlightInput,
+    AssignAircraftInput,
+    AssignBackupCrewInput,
+)
 
 
 DecisionType = Literal[
@@ -22,7 +26,11 @@ DecisionType = Literal[
 # Assign Aircraft
 # ---------------------------------------------------------------------------
 @mcp.tool()
-def assign_aircraft(flight_id: int, aircraft_id: int, employee_id: int):
+def assign_aircraft(data: AssignAircraftInput):
+
+    flight_id = data.flight_id
+    aircraft_id = data.aircraft_id
+    employee_id = data.employee_id
     """
     Assign an available aircraft to a flight. Requires an authorized
     employee (Operations Manager or Dispatcher) AND a session that has
