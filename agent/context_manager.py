@@ -8,7 +8,7 @@ class ContextManager:
 
     Supported strategies:
         1. Sliding Window
-        2. Observation Masking
+        2. Observation and Tool-Output Masking
         3. Recursive Summarization
         4. Zone-Based Pruning
     """
@@ -24,8 +24,8 @@ class ContextManager:
         self.window_size = window_size
         self.recent_size = recent_size
 
-        # Keep the complete conversation history.
-        # Each strategy works on the same original context.
+        # Keep the complete original history.
+        # Every strategy works on the same context.
         self.history = []
 
     # ============================================================
@@ -76,7 +76,7 @@ class ContextManager:
 
         words = text.split()
 
-        return int(len(words) * 1.3)
+        return max(1, int(len(words) * 1.3))
 
     # ============================================================
     # 1. SLIDING WINDOW
@@ -90,33 +90,59 @@ class ContextManager:
         return list(self.history[-self.window_size:])
 
     # ============================================================
-    # 2. OBSERVATION MASKING
+    # 2. OBSERVATION AND TOOL-OUTPUT MASKING
     # ============================================================
 
     def observation_masking(self):
         """
-        Mask sensitive information while preserving
-        the conversation structure.
+        Mask unnecessary/sensitive observation details and
+        large tool outputs while preserving useful information.
+
+        Tool outputs are detected when the role is 'tool'.
+        Large tool-output content is replaced by a compact marker.
+
+        Sensitive information such as emails, phone numbers,
+        and payment-card names is also masked.
         """
 
         masked_context = []
 
         for message in self.history:
 
+            role = message["role"]
             text = str(message["content"])
 
-            # Email
+            # ----------------------------------------------------
+            # Sensitive information masking
+            # ----------------------------------------------------
+
             text = text.replace("@", "[EMAIL]")
 
-            # Egyptian phone prefix
             text = text.replace("+20", "[PHONE]")
 
-            # Payment information
             text = text.replace("Visa", "[CARD]")
+            text = text.replace("VISA", "[CARD]")
+
             text = text.replace("MasterCard", "[CARD]")
+            text = text.replace("MASTERCARD", "[CARD]")
+
+            # ----------------------------------------------------
+            # Tool-output masking
+            # ----------------------------------------------------
+
+            if role.lower() == "tool":
+
+                # Keep short tool outputs because they may contain
+                # useful operational information.
+                if len(text) > 300:
+                    text = (
+                        "[MASKED TOOL OUTPUT] "
+                        "Large tool output removed to reduce "
+                        "context size."
+                    )
 
             masked_context.append({
-                "role": message["role"],
+                "role": role,
                 "content": text
             })
 
@@ -128,14 +154,15 @@ class ContextManager:
 
     def recursive_summarization(self):
         """
-        Compress older observations while preserving
-        the most recent observations.
+        Compress older observations into one historical summary
+        while preserving the most recent observations.
         """
 
         if len(self.history) <= self.recent_size:
             return list(self.history)
 
         old_messages = self.history[:-self.recent_size]
+
         recent_messages = self.history[-self.recent_size:]
 
         summary_parts = []
@@ -163,24 +190,18 @@ class ContextManager:
 
     def zone_based_pruning(self):
         """
-        Preserve operationally important observations
-        and recent observations.
+        Divide context into:
 
-        Critical information includes:
-            - cancellation
-            - delay
-            - maintenance
-            - emergency
-            - aircraft
-            - backup aircraft
-            - crew
-            - operational decisions
-            - weather
-            - rescheduling
+            important:
+                operationally critical observations
+
+            recent:
+                most recent observations
+
+        Critical operational information is preserved.
         """
 
         important = []
-        recent = []
 
         critical_keywords = [
             "cancel",
@@ -198,7 +219,14 @@ class ContextManager:
             "operational decision",
             "weather",
             "reschedule",
-            "rescheduled"
+            "rescheduled",
+            "divert",
+            "diverted",
+            "gate",
+            "safety",
+            "fuel",
+            "outage",
+            "closure"
         ]
 
         for message in self.history:
@@ -212,10 +240,13 @@ class ContextManager:
                 important.append(message)
 
         # Always preserve recent observations.
-        recent = list(self.history[-self.recent_size:])
+        recent = list(
+            self.history[-self.recent_size:]
+        )
 
-        # Remove duplicates while preserving order.
+        # Remove duplicates from important zone.
         unique_important = []
+
         seen = set()
 
         for message in important:
@@ -226,7 +257,9 @@ class ContextManager:
             )
 
             if key not in seen:
+
                 unique_important.append(message)
+
                 seen.add(key)
 
         return {
@@ -272,8 +305,8 @@ class ContextManager:
 
         latency = perf_counter() - start
 
-        # Convert dictionary output into a list for token estimation.
         if isinstance(result, dict):
+
             messages = []
 
             if "important" in result:
@@ -282,17 +315,18 @@ class ContextManager:
             if "recent" in result:
                 messages.extend(result["recent"])
 
-            result_for_tokens = messages
-
         else:
-            result_for_tokens = result
+            messages = result
 
-        tokens = self.estimate_tokens(result_for_tokens)
+        tokens = self.estimate_tokens(messages)
 
         return {
             "strategy": strategy,
-            "messages": len(result_for_tokens),
+            "messages": len(messages),
             "tokens": tokens,
-            "latency_ms": round(latency * 1000, 4),
+            "latency_ms": round(
+                latency * 1000,
+                4
+            ),
             "result": result
         }
