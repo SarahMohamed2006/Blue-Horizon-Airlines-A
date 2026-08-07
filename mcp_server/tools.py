@@ -27,103 +27,112 @@ DecisionType = Literal[
 # ---------------------------------------------------------------------------
 @mcp.tool()
 def assign_aircraft(data: AssignAircraftInput):
+    """
+    Assign an available aircraft to a flight. Requires an authorized
+    employee (Operations Manager or Dispatcher) AND a session that has
+    authenticated via authenticate_manager.
+    """
 
     flight_id = data.flight_id
     aircraft_id = data.aircraft_id
     employee_id = data.employee_id
-    """
-    Assign an available aircraft to a flight. Requires an authorized
-    employee (Operations Manager or Dispatcher) AND a session that has
-    authenticated via authenticate_manager (see notifications.py) — this
-    tool is only meaningfully available after that session-level auth,
-    which is what the tools/list_changed push signals to the client.
-    """
+
     if not SessionState.is_manager_authenticated():
-        return {"error": "This action requires an authenticated session. Call authenticate_manager first."}
+        return {
+            "error": "This action requires an authenticated session. Call authenticate_manager first."
+        }
 
     conn = get_connection()
-    cursor = conn.cursor()
 
-    # Check flight
-    cursor.execute("""
-        SELECT flight_id, status
-        FROM Flights
-        WHERE flight_id=?
-    """, (flight_id,))
-    flight = cursor.fetchone()
+    try:
+        cursor = conn.cursor()
 
-    if not flight:
-        conn.close()
-        return {"error": "Flight not found"}
+        # Check flight
+        cursor.execute("""
+            SELECT flight_id, status
+            FROM Flights
+            WHERE flight_id=?
+        """, (flight_id,))
+        flight = cursor.fetchone()
 
-    if flight["status"] == "Cancelled":
-        conn.close()
-        return {"error": "Cannot assign aircraft to a cancelled flight"}
+        if not flight:
+            return {"error": "Flight not found"}
 
-    if flight["status"] == "Completed":
-        conn.close()
-        return {"error": "Flight already completed"}
+        if flight["status"] == "Cancelled":
+            return {"error": "Cannot assign aircraft to a cancelled flight"}
 
-    # Authorization
-    cursor.execute("""
-        SELECT role
-        FROM Employees
-        WHERE employee_id=?
-    """, (employee_id,))
-    employee = cursor.fetchone()
+        if flight["status"] == "Completed":
+            return {"error": "Flight already completed"}
 
-    if not employee:
-        conn.close()
-        return {"error": "Employee not found"}
+        # Authorization
+        cursor.execute("""
+            SELECT role
+            FROM Employees
+            WHERE employee_id=?
+        """, (employee_id,))
+        employee = cursor.fetchone()
 
-    if employee["role"] not in ("Operations Manager", "Dispatcher"):
-        conn.close()
-        return {"error": "Unauthorized. Only Operations Manager or Dispatcher can assign aircraft."}
+        if not employee:
+            return {"error": "Employee not found"}
 
-    # Check aircraft
-    cursor.execute("""
-        SELECT status
-        FROM Aircraft
-        WHERE aircraft_id=?
-    """, (aircraft_id,))
-    aircraft = cursor.fetchone()
+        if employee["role"] not in ("Operations Manager", "Dispatcher"):
+            return {
+                "error": "Unauthorized. Only Operations Manager or Dispatcher can assign aircraft."
+            }
 
-    if not aircraft:
-        conn.close()
-        return {"error": "Aircraft not found"}
+        # Check aircraft
+        cursor.execute("""
+            SELECT status
+            FROM Aircraft
+            WHERE aircraft_id=?
+        """, (aircraft_id,))
+        aircraft = cursor.fetchone()
 
-    if aircraft["status"] != "Available":
-        conn.close()
-        return {"error": "Aircraft is not available"}
+        if not aircraft:
+            return {"error": "Aircraft not found"}
 
-    cursor.execute("""
-        UPDATE Flights
-        SET aircraft_id=?
-        WHERE flight_id=?
-    """, (aircraft_id, flight_id))
+        if aircraft["status"] != "Available":
+            return {"error": "Aircraft is not available"}
 
-    cursor.execute("""
-        INSERT INTO AircraftAssignments
+        cursor.execute("""
+            UPDATE Flights
+            SET aircraft_id=?
+            WHERE flight_id=?
+        """, (aircraft_id, flight_id))
+
+        cursor.execute("""
+            INSERT INTO AircraftAssignments
             (flight_id, aircraft_id, assigned_at, assignment_reason)
-        VALUES (?, ?, CURRENT_TIMESTAMP, 'Operational Assignment')
-    """, (flight_id, aircraft_id))
+            VALUES (?, ?, CURRENT_TIMESTAMP, 'Operational Assignment')
+        """, (flight_id, aircraft_id))
 
-    cursor.execute("""
-        UPDATE Aircraft
-        SET status='Assigned'
-        WHERE aircraft_id=?
-    """, (aircraft_id,))
+        cursor.execute("""
+            UPDATE Aircraft
+            SET status='Assigned'
+            WHERE aircraft_id=?
+        """, (aircraft_id,))
 
-    cursor.execute("""
-        INSERT INTO FlightEvents
+        cursor.execute("""
+            INSERT INTO FlightEvents
             (flight_id, event_type, severity, description, reported_at, status)
-        VALUES (?, 'Aircraft Assigned', 'Low', 'Replacement aircraft assigned by operations.', CURRENT_TIMESTAMP, 'Closed')
-    """, (flight_id,))
+            VALUES (?, 'Aircraft Assigned', 'Low',
+            'Replacement aircraft assigned by operations.',
+            CURRENT_TIMESTAMP, 'Closed')
+        """, (flight_id,))
 
-    conn.commit()
-    conn.close()
+        conn.commit()
 
-    return {"success": True, "message": "Aircraft assigned successfully"}
+        return {
+            "success": True,
+            "message": "Aircraft assigned successfully"
+        }
+
+    except Exception as e:
+        conn.rollback()
+        return {"error": f"Internal server error: {str(e)}"}
+
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -131,111 +140,120 @@ def assign_aircraft(data: AssignAircraftInput):
 # ---------------------------------------------------------------------------
 @mcp.tool()
 def assign_backup_crew(data: AssignBackupCrewInput):
-
-    flight_id = data.flight_id
-    crew_id = data.crew_id
-    employee_id = data.employee_id
     """
     Assign a crew member to a flight. Requires an authorized employee
     and an authenticated session.
     """
+
+    flight_id = data.flight_id
+    crew_id = data.crew_id
+    employee_id = data.employee_id
+
     if not SessionState.is_manager_authenticated():
-        return {"error": "This action requires an authenticated session. Call authenticate_manager first."}
+        return {
+            "error": "This action requires an authenticated session. Call authenticate_manager first."
+        }
 
     conn = get_connection()
-    cursor = conn.cursor()
 
-    # Check flight
-    cursor.execute("""
-        SELECT flight_id, status
-        FROM Flights
-        WHERE flight_id=?
-    """, (flight_id,))
-    flight = cursor.fetchone()
+    try:
+        cursor = conn.cursor()
 
-    if not flight:
-        conn.close()
-        return {"error": "Flight not found"}
+        # Check flight
+        cursor.execute("""
+            SELECT flight_id, status
+            FROM Flights
+            WHERE flight_id=?
+        """, (flight_id,))
+        flight = cursor.fetchone()
 
-    if flight["status"] in ("Cancelled", "Completed"):
-        conn.close()
-        return {"error": "Cannot assign crew to this flight"}
+        if not flight:
+            return {"error": "Flight not found"}
 
-    # Authorization
-    cursor.execute("""
-        SELECT role
-        FROM Employees
-        WHERE employee_id=?
-    """, (employee_id,))
-    employee = cursor.fetchone()
+        if flight["status"] in ("Cancelled", "Completed"):
+            return {"error": "Cannot assign crew to this flight"}
 
-    if not employee:
-        conn.close()
-        return {"error": "Employee not found"}
+        # Authorization
+        cursor.execute("""
+            SELECT role
+            FROM Employees
+            WHERE employee_id=?
+        """, (employee_id,))
+        employee = cursor.fetchone()
 
-    if employee["role"] not in ("Operations Manager", "Dispatcher"):
-        conn.close()
-        return {"error": "Unauthorized. Only Operations Manager or Dispatcher can assign crew."}
+        if not employee:
+            return {"error": "Employee not found"}
 
-    # Check crew
-    cursor.execute("""
-        SELECT availability, hours_flown_today
-        FROM Crew
-        WHERE crew_id=?
-    """, (crew_id,))
-    crew = cursor.fetchone()
+        if employee["role"] not in ("Operations Manager", "Dispatcher"):
+            return {
+                "error": "Unauthorized. Only Operations Manager or Dispatcher can assign crew."
+            }
 
-    if not crew:
-        conn.close()
-        return {"error": "Crew member not found"}
+        # Check crew
+        cursor.execute("""
+            SELECT availability, hours_flown_today
+            FROM Crew
+            WHERE crew_id=?
+        """, (crew_id,))
+        crew = cursor.fetchone()
 
-    if not crew["availability"]:
-        conn.close()
-        return {"error": "Crew member unavailable"}
+        if not crew:
+            return {"error": "Crew member not found"}
 
-    if crew["hours_flown_today"] >= 8:
-        conn.close()
-        return {"error": "Crew exceeded duty hours"}
+        if not crew["availability"]:
+            return {"error": "Crew member unavailable"}
 
-    # Prevent duplicate assignment
-    cursor.execute("""
-        SELECT 1
-        FROM FlightCrew
-        WHERE flight_id=? AND crew_id=?
-    """, (flight_id, crew_id))
+        if crew["hours_flown_today"] >= 8:
+            return {"error": "Crew exceeded duty hours"}
 
-    if cursor.fetchone():
-        conn.close()
-        return {"error": "Crew already assigned"}
+        # Prevent duplicate assignment
+        cursor.execute("""
+            SELECT 1
+            FROM FlightCrew
+            WHERE flight_id=? AND crew_id=?
+        """, (flight_id, crew_id))
 
-    cursor.execute("""
-        INSERT INTO FlightCrew (flight_id, crew_id)
-        VALUES (?, ?)
-    """, (flight_id, crew_id))
+        if cursor.fetchone():
+            return {"error": "Crew already assigned"}
 
-    cursor.execute("""
-        INSERT INTO CrewAssignments
+        cursor.execute("""
+            INSERT INTO FlightCrew (flight_id, crew_id)
+            VALUES (?, ?)
+        """, (flight_id, crew_id))
+
+        cursor.execute("""
+            INSERT INTO CrewAssignments
             (flight_id, crew_id, assigned_at, assignment_status)
-        VALUES (?, ?, CURRENT_TIMESTAMP, 'Active')
-    """, (flight_id, crew_id))
+            VALUES (?, ?, CURRENT_TIMESTAMP, 'Active')
+        """, (flight_id, crew_id))
 
-    cursor.execute("""
-        UPDATE Crew
-        SET availability=0
-        WHERE crew_id=?
-    """, (crew_id,))
+        cursor.execute("""
+            UPDATE Crew
+            SET availability=0
+            WHERE crew_id=?
+        """, (crew_id,))
 
-    cursor.execute("""
-        INSERT INTO FlightEvents
+        cursor.execute("""
+            INSERT INTO FlightEvents
             (flight_id, event_type, severity, description, reported_at, status)
-        VALUES (?, 'Backup Crew Assigned', 'Low', 'Backup crew assigned by Flight Operations.', CURRENT_TIMESTAMP, 'Closed')
-    """, (flight_id,))
+            VALUES (?, 'Backup Crew Assigned', 'Low',
+            'Backup crew assigned by Flight Operations.',
+            CURRENT_TIMESTAMP, 'Closed')
+        """, (flight_id,))
 
-    conn.commit()
-    conn.close()
+        conn.commit()
 
-    return {"success": True, "message": "Backup crew assigned successfully"}
+        return {
+            "success": True,
+            "message": "Backup crew assigned successfully"
+        }
 
+    except Exception as e:
+        conn.rollback()
+        return {"error": f"Internal server error: {str(e)}"}
+
+    finally:
+        conn.close()
 
 # ---------------------------------------------------------------------------
 # Reschedule Flight
