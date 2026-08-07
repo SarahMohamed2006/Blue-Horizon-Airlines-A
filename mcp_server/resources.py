@@ -186,8 +186,6 @@ def get_flight_full_details(flight_number: str):
 
 
 # Delayed Flights
-# FIXED: was missing conn.close() and a return statement entirely —
-# this resource previously always returned None.
 
 @mcp.resource("flights://delayed")
 def get_delayed_flights():
@@ -208,9 +206,6 @@ def get_delayed_flights():
 
 
 # Today's Flights
-# FIXED: removed unreachable dead code after the original return, and
-# added an actual date filter — previously this returned ALL flights
-# regardless of date despite the name/docstring.
 
 @mcp.resource("flights://today")
 def get_todays_flights():
