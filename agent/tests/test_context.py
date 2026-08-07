@@ -37,7 +37,7 @@ def test_observation_masking():
     assert "[EMAIL]" in result[0]["content"]
 
 
-ddef test_recursive_summarization():
+def test_recursive_summarization():
 
     manager = ContextManager(window_size=10)
 
@@ -73,6 +73,8 @@ def test_zone_based_pruning():
     )
 
     result = manager.zone_based_pruning()
+
+    assert isinstance(result, dict)
 
     assert len(result["important"]) == 1
     assert "maintenance" in result["important"][0]["content"].lower()
