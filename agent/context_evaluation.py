@@ -274,6 +274,159 @@ def print_results(results):
 
 
 # ============================================================
+# Choose Best Strategy
+# ============================================================
+
+def choose_best_strategy(results):
+    """
+    Choose the best context-management strategy.
+
+    The strategy is evaluated using:
+        - Accuracy  -> higher is better
+        - Tokens    -> lower is better
+        - Latency   -> lower is better
+
+    We calculate an overall score for each strategy.
+    """
+
+    strategy_scores = {}
+
+    # Group results by strategy
+    for result in results:
+
+        strategy = result["strategy"]
+
+        if strategy not in strategy_scores:
+            strategy_scores[strategy] = {
+                "accuracy": [],
+                "tokens": [],
+                "latency": []
+            }
+
+        strategy_scores[strategy]["accuracy"].append(
+            result["accuracy"]
+        )
+
+        strategy_scores[strategy]["tokens"].append(
+            result["tokens"]
+        )
+
+        strategy_scores[strategy]["latency"].append(
+            result["latency_ms"]
+        )
+
+    # Calculate averages
+    averages = {}
+
+    for strategy, values in strategy_scores.items():
+
+        avg_accuracy = (
+            sum(values["accuracy"])
+            / len(values["accuracy"])
+        )
+
+        avg_tokens = (
+            sum(values["tokens"])
+            / len(values["tokens"])
+        )
+
+        avg_latency = (
+            sum(values["latency"])
+            / len(values["latency"])
+        )
+
+        averages[strategy] = {
+            "accuracy": avg_accuracy,
+            "tokens": avg_tokens,
+            "latency": avg_latency
+        }
+
+    # Find min/max values for normalization
+    max_accuracy = max(
+        value["accuracy"]
+        for value in averages.values()
+    )
+
+    min_tokens = min(
+        value["tokens"]
+        for value in averages.values()
+    )
+
+    max_tokens = max(
+        value["tokens"]
+        for value in averages.values()
+    )
+
+    min_latency = min(
+        value["latency"]
+        for value in averages.values()
+    )
+
+    max_latency = max(
+        value["latency"]
+        for value in averages.values()
+    )
+
+    scores = {}
+
+    for strategy, value in averages.items():
+
+        # Accuracy: higher is better
+        accuracy_score = (
+            value["accuracy"] / max_accuracy
+            if max_accuracy > 0
+            else 0
+        )
+
+        # Tokens: lower is better
+        if max_tokens == min_tokens:
+            token_score = 1
+        else:
+            token_score = (
+                (max_tokens - value["tokens"])
+                / (max_tokens - min_tokens)
+            )
+
+        # Latency: lower is better
+        if max_latency == min_latency:
+            latency_score = 1
+        else:
+            latency_score = (
+                (max_latency - value["latency"])
+                / (max_latency - min_latency)
+            )
+
+        # Accuracy is the most important metric
+        score = (
+            0.50 * accuracy_score
+            + 0.30 * token_score
+            + 0.20 * latency_score
+        )
+
+        scores[strategy] = score
+
+    best_strategy = max(
+        scores,
+        key=scores.get
+    )
+
+    print("\n" + "=" * 80)
+    print("BEST CONTEXT MANAGEMENT STRATEGY")
+    print("=" * 80)
+
+    for strategy, score in scores.items():
+        print(
+            f"{strategy:<30} "
+            f"score = {score:.3f}"
+        )
+
+    print("-" * 80)
+    print(f"Best Strategy: {best_strategy}")
+
+    return best_strategy
+
+
+# ============================================================
 # Main
 # ============================================================
 
@@ -282,3 +435,5 @@ if __name__ == "__main__":
     results = run_evaluation()
 
     print_results(results)
+
+    choose_best_strategy(results)
