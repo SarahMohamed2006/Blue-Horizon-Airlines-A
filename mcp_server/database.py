@@ -1,8 +1,9 @@
 import sqlite3
 from pathlib import Path
-
-
-# Project root = folder that contains db/ and mcp_server/
+# Project Paths
+# Project root contains:
+#   db/
+#   mcp_server/
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 DB_DIR = PROJECT_ROOT / "db"
@@ -12,66 +13,112 @@ SCHEMA_PATH = DB_DIR / "schema.sql"
 SEED_PATH = DB_DIR / "seed.sql"
 
 
+# Database Connection
+
 def get_connection():
     """
     Create and return a connection to the Blue Horizon SQLite database.
 
-    The connection uses sqlite3.Row so database records can be accessed
-    using column names, for example:
-
-        row["status"]
-
-    Foreign-key enforcement is enabled for every connection.
+    Every connection:
+    - Uses sqlite3.Row so rows can be accessed by column name.
+    - Enables SQLite foreign-key enforcement.
     """
 
     DB_DIR.mkdir(parents=True, exist_ok=True)
 
     conn = sqlite3.connect(str(DB_PATH))
 
-    # Allow:
+    # Example:
     # row["flight_id"]
     # row["status"]
     conn.row_factory = sqlite3.Row
 
-    # Enforce foreign-key relationships.
+    # Enforce FOREIGN KEY constraints.
     conn.execute("PRAGMA foreign_keys = ON")
 
     return conn
 
 
+# Database State Check
+
+def _database_has_data(conn):
+    """
+    Check whether the main Flights table exists and contains data.
+
+    This handles:
+    - Database file does not exist.
+    - Database file exists but is empty.
+    - Database was created but seed data was never loaded.
+    """
+
+    table = conn.execute(
+        """
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'table'
+          AND name = 'Flights'
+        """
+    ).fetchone()
+
+    if table is None:
+        return False
+
+    count = conn.execute(
+        "SELECT COUNT(*) AS count FROM Flights"
+    ).fetchone()["count"]
+
+    return count > 0
+
+
+# Database Initialization
+
 def initialize_database():
     """
-    Create the database schema if it does not already exist.
+    Initialize the Blue Horizon database.
 
-    The seed file is applied only when the database is created for
-    the first time, so calling this function does not duplicate seed data.
+    The function:
+    1. Verifies schema.sql exists.
+    2. Verifies seed.sql exists.
+    3. Creates the schema when the database is empty.
+    4. Loads seed data only when the database has no data.
+    5. Does not duplicate seed data on every server startup.
     """
 
-    database_exists = DB_PATH.exists()
+    if not SCHEMA_PATH.exists():
+        raise FileNotFoundError(
+            f"Schema file not found: {SCHEMA_PATH}"
+        )
+
+    if not SEED_PATH.exists():
+        raise FileNotFoundError(
+            f"Seed file not found: {SEED_PATH}"
+        )
 
     conn = get_connection()
 
     try:
-        if not database_exists:
-            if not SCHEMA_PATH.exists():
-                raise FileNotFoundError(
-                    f"Schema file not found: {SCHEMA_PATH}"
-                )
+        # If the database already contains the Flights table
+        # with data, do not run the seed again.
+        if _database_has_data(conn):
+            return
 
-            if not SEED_PATH.exists():
-                raise FileNotFoundError(
-                    f"Seed file not found: {SEED_PATH}"
-                )
+        # Create database schema
 
-            # Create all tables.
-            schema_sql = SCHEMA_PATH.read_text(encoding="utf-8")
-            conn.executescript(schema_sql)
+        schema_sql = SCHEMA_PATH.read_text(
+            encoding="utf-8"
+        )
 
-            # Insert initial data.
-            seed_sql = SEED_PATH.read_text(encoding="utf-8")
-            conn.executescript(seed_sql)
+        conn.executescript(schema_sql)
 
-            conn.commit()
+        # Load initial seed data
+
+        seed_sql = SEED_PATH.read_text(
+            encoding="utf-8"
+        )
+
+        conn.executescript(seed_sql)
+
+        conn.commit()
 
     except Exception:
         conn.rollback()
@@ -80,7 +127,12 @@ def initialize_database():
     finally:
         conn.close()
 
+# Manual Initialization
+
 
 if __name__ == "__main__":
     initialize_database()
-    print(f"Database initialized successfully: {DB_PATH}")
+
+    print(
+        f"Database initialized successfully: {DB_PATH}"
+    )
