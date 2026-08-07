@@ -1,7 +1,6 @@
 import sqlite3
 from pathlib import Path
 
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 DB_DIR = PROJECT_ROOT / "db"
@@ -9,7 +8,6 @@ DB_PATH = DB_DIR / "blue_horizon.db"
 
 SCHEMA_PATH = DB_DIR / "schema.sql"
 SEED_PATH = DB_DIR / "seed.sql"
-
 
 def get_connection():
     DB_DIR.mkdir(parents=True, exist_ok=True)
@@ -19,7 +17,6 @@ def get_connection():
     conn.execute("PRAGMA foreign_keys = ON")
 
     return conn
-
 
 def _database_is_initialized(conn):
     required_tables = {
@@ -56,7 +53,6 @@ def _database_is_initialized(conn):
 
     return count > 0
 
-
 def initialize_database():
     if not SCHEMA_PATH.exists():
         raise FileNotFoundError(f"Schema file not found: {SCHEMA_PATH}")
@@ -84,7 +80,6 @@ def initialize_database():
 
     finally:
         conn.close()
-
 
 if __name__ == "__main__":
     initialize_database()
