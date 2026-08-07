@@ -30,7 +30,7 @@ from mcp import types
 # CONFIG - change these to match how your teammates actually run the server
 # ---------------------------------------------------------------------------
 SERVER_SCRIPT_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "mcp_server", "main.py"
+    os.path.dirname(__file__), "..", "mcp_server", "server.py"
 )
 HTTP_SERVER_URL = "http://localhost:8000/mcp"
 
