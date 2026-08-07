@@ -37,7 +37,7 @@ def test_observation_masking():
     assert "[EMAIL]" in result[0]["content"]
 
 
-def test_recursive_summarization():
+ddef test_recursive_summarization():
 
     manager = ContextManager(window_size=10)
 
@@ -49,10 +49,13 @@ def test_recursive_summarization():
 
     result = manager.recursive_summarization()
 
-    assert "summary" in result
-    assert "recent" in result
+    assert isinstance(result, list)
+    assert len(result) == 6
 
-    assert len(result["recent"]) == 5
+    assert result[0]["role"] == "system"
+    assert "Historical context summary:" in result[0]["content"]
+
+    assert len(result[1:]) == 5
 
 
 def test_zone_based_pruning():
