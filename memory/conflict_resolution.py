@@ -24,4 +24,4 @@ class ConflictResolution:
         if new_time >= old_time:
             return new_record
 
-        return old_record
+        return old_record 
