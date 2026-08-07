@@ -4,58 +4,286 @@ from context_manager import ContextManager
 
 
 # ============================================================
-# Test Cases
+# Test Case Builder
+# ============================================================
+
+def build_long_tool_output(prefix, index):
+    """
+    Create realistic but low-value tool output.
+
+    These outputs intentionally add noise to the context so that
+    the strategies can be compared on long-context management.
+    """
+
+    return (
+        f"{prefix} tool report #{index}: "
+        "routine operational status checked. "
+        "No additional critical operational decision was found. "
+        "Passenger count verified. "
+        "Gate availability checked. "
+        "Baggage status checked. "
+        "Boarding system status checked. "
+        "Crew availability database queried. "
+        "Aircraft status database queried. "
+        "Schedule consistency checked. "
+        "Weather feed checked. "
+        "Airport operations feed checked. "
+        "No additional action required. "
+        "This is routine operational information."
+    )
+
+
+# ============================================================
+# Long-Context Test Cases
 # ============================================================
 
 TEST_CASES = [
     {
-        "name": "Weather Delay",
+        "name": "Weather Delay Long Transcript",
+
         "messages": [
-            ("user", "Flight BH218 was delayed because of bad weather."),
-            ("agent", "A backup aircraft may be required."),
-            ("user", "Operations approved the backup aircraft."),
-            ("agent", "Backup aircraft assigned to BH218."),
-            ("user", "The passengers were notified."),
-            ("agent", "The delay announcement was sent."),
-            ("user", "Crew duty limits were checked."),
-            ("agent", "Crew remained within duty limits."),
-            ("user", "What happened to BH218 earlier?"),
+
+            # IMPORTANT EARLY DECISION
+            (
+                "user",
+                "Flight BH218 was delayed because of severe weather."
+            ),
+            (
+                "agent",
+                "Operations approved a backup aircraft for BH218."
+            ),
+            (
+                "user",
+                "The backup aircraft was assigned to BH218."
+            ),
+
+            # Tool-heavy noise
+            *[
+                (
+                    "tool",
+                    build_long_tool_output(
+                        "Weather operations",
+                        i
+                    )
+                )
+                for i in range(1, 31)
+            ],
+
+            # Additional conversation
+            (
+                "user",
+                "Passengers were notified about the delay."
+            ),
+            (
+                "agent",
+                "The delay announcement was sent."
+            ),
+            (
+                "tool",
+                "Passenger notification tool completed successfully."
+            ),
+            (
+                "tool",
+                "Gate information was synchronized."
+            ),
+            (
+                "tool",
+                "Boarding system status was checked."
+            ),
+
+            # Final question
+            (
+                "user",
+                "What happened to BH218 earlier?"
+            ),
         ],
+
         "expected_keywords": [
             "BH218",
             "weather",
             "backup aircraft",
         ],
     },
+
     {
-        "name": "Maintenance Issue",
+        "name": "Maintenance Long Transcript",
+
         "messages": [
-            ("user", "BH305 reported a maintenance problem."),
-            ("agent", "The aircraft was removed from service."),
-            ("user", "Maintenance severity was marked critical."),
-            ("agent", "A replacement aircraft is required."),
-            ("user", "Operations assigned a backup aircraft."),
-            ("agent", "The replacement aircraft is now assigned."),
-            ("user", "What happened to BH305?"),
+
+            # IMPORTANT EARLY DECISION
+            (
+                "user",
+                "BH305 reported a critical maintenance problem."
+            ),
+            (
+                "agent",
+                "The aircraft was removed from service."
+            ),
+            (
+                "user",
+                "Operations assigned a backup aircraft to BH305."
+            ),
+
+            # Tool-heavy noise
+            *[
+                (
+                    "tool",
+                    build_long_tool_output(
+                        "Maintenance operations",
+                        i
+                    )
+                )
+                for i in range(1, 31)
+            ],
+
+            (
+                "user",
+                "The replacement aircraft is ready."
+            ),
+            (
+                "agent",
+                "The replacement aircraft is now assigned."
+            ),
+
+            (
+                "tool",
+                "Maintenance database synchronized."
+            ),
+            (
+                "tool",
+                "Aircraft availability refreshed."
+            ),
+            (
+                "tool",
+                "Gate assignment verified."
+            ),
+
+            # Final question
+            (
+                "user",
+                "What happened to BH305?"
+            ),
         ],
+
         "expected_keywords": [
             "BH305",
             "maintenance",
             "backup aircraft",
         ],
     },
+
     {
-        "name": "Crew Reassignment",
+        "name": "Crew Reassignment Long Transcript",
+
         "messages": [
-            ("user", "Flight BH410 requires backup crew."),
-            ("agent", "Crew availability was checked."),
-            ("user", "A qualified crew member was available."),
-            ("agent", "Backup crew was assigned."),
-            ("user", "What was the previous crew action?"),
+
+            # IMPORTANT EARLY DECISION
+            (
+                "user",
+                "Flight BH410 requires backup crew."
+            ),
+            (
+                "agent",
+                "Operations approved a qualified backup crew."
+            ),
+            (
+                "user",
+                "Backup crew was assigned to BH410."
+            ),
+
+            # Tool-heavy noise
+            *[
+                (
+                    "tool",
+                    build_long_tool_output(
+                        "Crew operations",
+                        i
+                    )
+                )
+                for i in range(1, 31)
+            ],
+
+            (
+                "tool",
+                "Crew availability was checked."
+            ),
+            (
+                "tool",
+                "Duty limits were verified."
+            ),
+            (
+                "tool",
+                "Airport staffing database synchronized."
+            ),
+
+            # Final question
+            (
+                "user",
+                "What was the previous crew action for BH410?"
+            ),
         ],
+
         "expected_keywords": [
             "BH410",
             "backup crew",
+        ],
+    },
+
+    {
+        "name": "Flight Cancellation Long Transcript",
+
+        "messages": [
+
+            # IMPORTANT EARLY DECISION
+            (
+                "user",
+                "Flight BH512 was cancelled because of an aircraft safety issue."
+            ),
+            (
+                "agent",
+                "Operations approved passenger rebooking."
+            ),
+            (
+                "user",
+                "Passengers were moved to the next available flight."
+            ),
+
+            # Tool-heavy noise
+            *[
+                (
+                    "tool",
+                    build_long_tool_output(
+                        "Cancellation operations",
+                        i
+                    )
+                )
+                for i in range(1, 31)
+            ],
+
+            (
+                "tool",
+                "Rebooking database synchronized."
+            ),
+            (
+                "tool",
+                "Passenger manifest refreshed."
+            ),
+            (
+                "tool",
+                "Airport departure board synchronized."
+            ),
+
+            # Final question
+            (
+                "user",
+                "Why was BH512 cancelled?"
+            ),
+        ],
+
+        "expected_keywords": [
+            "BH512",
+            "cancelled",
+            "safety",
         ],
     },
 ]
@@ -65,13 +293,15 @@ TEST_CASES = [
 # Build Context
 # ============================================================
 
-def build_context(messages, window_size=10):
+def build_context(messages, window_size=10, recent_size=5):
 
     manager = ContextManager(
-        window_size=window_size
+        window_size=window_size,
+        recent_size=recent_size
     )
 
     for role, content in messages:
+
         manager.add_message(
             role,
             content
@@ -86,8 +316,8 @@ def build_context(messages, window_size=10):
 
 def flatten_context(result):
     """
-    Convert the output of any strategy into a single
-    text representation for evaluation.
+    Convert the output of any strategy into one text
+    representation for evaluation.
     """
 
     if isinstance(result, list):
@@ -102,15 +332,20 @@ def flatten_context(result):
         parts = []
 
         if "summary" in result:
-            parts.append(result["summary"])
+
+            parts.append(
+                result["summary"]
+            )
 
         if "important" in result:
+
             parts.extend(
                 item["content"]
                 for item in result["important"]
             )
 
         if "recent" in result:
+
             parts.extend(
                 item["content"]
                 for item in result["recent"]
@@ -125,10 +360,17 @@ def flatten_context(result):
 # Accuracy
 # ============================================================
 
-def calculate_accuracy(context_text, expected_keywords):
+def calculate_accuracy(
+    context_text,
+    expected_keywords
+):
     """
-    Calculate the percentage of expected keywords
-    preserved by the context-management strategy.
+    Calculate retrieval accuracy.
+
+    Accuracy =
+        preserved expected keywords
+        /
+        total expected keywords
     """
 
     text = context_text.lower()
@@ -151,7 +393,7 @@ def calculate_accuracy(context_text, expected_keywords):
 
 def estimate_tokens(text):
     """
-    Lightweight model-independent token approximation.
+    Model-independent token approximation.
 
     Rough approximation:
         1 token ~= 4 characters
@@ -192,6 +434,7 @@ def evaluate_strategy(
         result = manager.zone_based_pruning()
 
     else:
+
         raise ValueError(
             f"Unknown strategy: {strategy_name}"
         )
@@ -200,7 +443,9 @@ def evaluate_strategy(
         time.perf_counter() - start
     ) * 1000
 
-    context_text = flatten_context(result)
+    context_text = flatten_context(
+        result
+    )
 
     accuracy = calculate_accuracy(
         context_text,
@@ -242,9 +487,11 @@ def run_evaluation():
 
     for test_case in TEST_CASES:
 
+        # Same original context for every strategy.
         manager = build_context(
             test_case["messages"],
-            window_size=3
+            window_size=10,
+            recent_size=5
         )
 
         for strategy in strategies:
@@ -270,25 +517,26 @@ def run_evaluation():
 
 def print_results(results):
 
-    print("\n" + "=" * 80)
-    print("CONTEXT STRATEGY EVALUATION")
-    print("=" * 80)
+    print()
+    print("=" * 100)
+    print("LONG-CONTEXT STRATEGY EVALUATION")
+    print("=" * 100)
 
     print(
-        f"{'Test Case':<25}"
-        f"{'Strategy':<28}"
+        f"{'Test Case':<35}"
+        f"{'Strategy':<30}"
         f"{'Accuracy':<12}"
         f"{'Tokens':<10}"
         f"{'Latency(ms)':<12}"
     )
 
-    print("-" * 87)
+    print("-" * 100)
 
     for result in results:
 
         print(
-            f"{result['test_case']:<25}"
-            f"{result['strategy']:<28}"
+            f"{result['test_case']:<35}"
+            f"{result['strategy']:<30}"
             f"{result['accuracy']:<12}"
             f"{result['tokens']:<10}"
             f"{result['latency_ms']:<12}"
@@ -301,7 +549,7 @@ def print_results(results):
 
 def choose_best_strategy(results):
     """
-    Select the best strategy using:
+    Choose the best strategy using:
 
         Accuracy -> higher is better
         Tokens   -> lower is better
@@ -349,22 +597,22 @@ def choose_best_strategy(results):
     for strategy, values in strategy_scores.items():
 
         averages[strategy] = {
-            "accuracy": (
+
+            "accuracy":
                 sum(values["accuracy"])
-                / len(values["accuracy"])
-            ),
-            "tokens": (
+                / len(values["accuracy"]),
+
+            "tokens":
                 sum(values["tokens"])
-                / len(values["tokens"])
-            ),
-            "latency": (
+                / len(values["tokens"]),
+
+            "latency":
                 sum(values["latency"])
                 / len(values["latency"])
-            )
         }
 
     # --------------------------------------------------------
-    # Normalization values
+    # Normalization
     # --------------------------------------------------------
 
     max_accuracy = max(
@@ -400,17 +648,17 @@ def choose_best_strategy(results):
 
     for strategy, value in averages.items():
 
-        # Accuracy: higher is better
+        # Accuracy: higher is better.
         accuracy_score = (
             value["accuracy"] / max_accuracy
             if max_accuracy > 0
             else 0
         )
 
-        # Tokens: lower is better
+        # Tokens: lower is better.
         if max_tokens == min_tokens:
 
-            token_score = 1
+            token_score = 1.0
 
         else:
 
@@ -419,10 +667,10 @@ def choose_best_strategy(results):
                 / (max_tokens - min_tokens)
             )
 
-        # Latency: lower is better
+        # Latency: lower is better.
         if max_latency == min_latency:
 
-            latency_score = 1
+            latency_score = 1.0
 
         else:
 
@@ -431,7 +679,7 @@ def choose_best_strategy(results):
                 / (max_latency - min_latency)
             )
 
-        # Accuracy has the highest importance.
+        # Accuracy is the most important metric.
         score = (
             0.50 * accuracy_score
             + 0.30 * token_score
@@ -449,18 +697,42 @@ def choose_best_strategy(results):
         key=scores.get
     )
 
-    print("\n" + "=" * 80)
-    print("BEST CONTEXT MANAGEMENT STRATEGY")
-    print("=" * 80)
+    print()
+    print("=" * 100)
+    print("AVERAGE STRATEGY COMPARISON")
+    print("=" * 100)
+
+    print(
+        f"{'Strategy':<30}"
+        f"{'Avg Accuracy':<18}"
+        f"{'Avg Tokens':<15}"
+        f"{'Avg Latency(ms)':<18}"
+    )
+
+    print("-" * 100)
+
+    for strategy, value in averages.items():
+
+        print(
+            f"{strategy:<30}"
+            f"{value['accuracy']:<18.3f}"
+            f"{value['tokens']:<15.1f}"
+            f"{value['latency']:<18.3f}"
+        )
+
+    print()
+    print("=" * 100)
+    print("FINAL STRATEGY SCORES")
+    print("=" * 100)
 
     for strategy, score in scores.items():
 
         print(
-            f"{strategy:<30}"
+            f"{strategy:<35}"
             f"score = {score:.3f}"
         )
 
-    print("-" * 80)
+    print("-" * 100)
 
     print(
         f"Best Strategy: {best_strategy}"
