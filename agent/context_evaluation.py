@@ -224,7 +224,7 @@ def run_evaluation():
 
         manager = build_context(
             test_case["messages"],
-            window_size=20
+            window_size=3
         )
 
         for strategy in strategies:
