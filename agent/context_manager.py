@@ -1,10 +1,10 @@
-from collections import deque
 from time import perf_counter
 
 
 class ContextManager:
     """
-    Long-context management for the Blue Horizon Airlines Operations Agent.
+    Long-context management for the Blue Horizon Airlines
+    Operations Agent.
 
     Supported strategies:
         1. Sliding Window
@@ -14,8 +14,18 @@ class ContextManager:
     """
 
     def __init__(self, window_size=10, recent_size=5):
+        if window_size <= 0:
+            raise ValueError("window_size must be greater than 0")
+
+        if recent_size <= 0:
+            raise ValueError("recent_size must be greater than 0")
+
         self.window_size = window_size
         self.recent_size = recent_size
+
+        # Keep the full history.
+        # This is important because we need to test all strategies
+        # using the same original context.
         self.history = []
 
     
@@ -24,6 +34,12 @@ class ContextManager:
 
     def add_message(self, role, content):
         """Add one observation to the conversation history."""
+
+        if not isinstance(role, str):
+            raise TypeError("role must be a string")
+
+        if not isinstance(content, str):
+            raise TypeError("content must be a string")
 
         self.history.append({
             "role": role,
@@ -50,8 +66,9 @@ class ContextManager:
         Lightweight token estimation.
 
         We intentionally avoid requiring a tokenizer dependency.
+
         Approximation:
-            tokens ≈ number of words * 1.3
+            tokens ~= number of words * 1.3
         """
 
         text = " ".join(
@@ -80,8 +97,8 @@ class ContextManager:
 
     def observation_masking(self):
         """
-        Remove or mask sensitive / unnecessary observations
-        while preserving the conversation structure.
+        Mask sensitive information while preserving
+        the conversation structure.
         """
 
         masked_context = []
@@ -93,7 +110,7 @@ class ContextManager:
             # Email
             text = text.replace("@", "[EMAIL]")
 
-            # Phone numbers
+            # Phone number prefix
             text = text.replace("+20", "[PHONE]")
 
             # Payment information
@@ -115,20 +132,16 @@ class ContextManager:
         """
         Compress older observations while preserving recent context.
 
-        The context is divided into:
-            - old information
-            - recent information
-
-        Older information is recursively compressed into a summary.
+        Older observations are represented as a compact summary,
+        while the most recent observations remain unchanged.
         """
 
         if len(self.history) <= self.recent_size:
-            return self.history
+            return list(self.history)
 
         old_messages = self.history[:-self.recent_size]
         recent_messages = self.history[-self.recent_size:]
 
-        # Build a compact summary from old observations.
         summary_parts = []
 
         for message in old_messages:
@@ -154,23 +167,23 @@ class ContextManager:
 
     def zone_based_pruning(self):
         """
-        Divide observations into importance zones.
+        Preserve operationally important observations
+        and recent observations.
 
-        Critical:
-            cancellation, emergency, maintenance, delay,
-            aircraft, crew, operational decisions.
-
-        Recent:
-            latest observations.
-
-        Normal:
-            low-value observations.
-
-        Critical information is always preserved.
+        Critical information includes:
+            - cancellation
+            - delay
+            - maintenance
+            - emergency
+            - aircraft
+            - backup aircraft
+            - crew
+            - operational decisions
+            - weather
+            - rescheduling
         """
 
         critical = []
-        normal = []
 
         critical_keywords = [
             "cancel",
@@ -195,17 +208,17 @@ class ContextManager:
 
             text = str(message["content"]).lower()
 
-            if any(keyword in text for keyword in critical_keywords):
+            if any(
+                keyword in text
+                for keyword in critical_keywords
+            ):
                 critical.append(message)
-            else:
-                normal.append(message)
 
-        # Always preserve recent observations.
+        # Always preserve the most recent observations.
         recent = self.history[-self.recent_size:]
 
         # Avoid duplicates.
         result = []
-
         seen = set()
 
         for message in critical + recent:
@@ -221,9 +234,9 @@ class ContextManager:
 
         return result
 
-   
+    
     # STRATEGY SELECTOR
-   
+    
 
     def apply_strategy(self, strategy):
         """
