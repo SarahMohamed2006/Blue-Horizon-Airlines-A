@@ -23,14 +23,12 @@ class ContextManager:
         self.window_size = window_size
         self.recent_size = recent_size
 
-        # Keep the full history.
-        # This is important because we need to test all strategies
-        # using the same original context.
+        # Keep the original conversation history.
         self.history = []
 
-    
+    # ============================================================
     # COMMON
-    
+    # ============================================================
 
     def add_message(self, role, content):
         """Add one observation to the conversation history."""
@@ -56,16 +54,14 @@ class ContextManager:
 
         return list(self.history)
 
-    
+    # ============================================================
     # TOKEN ESTIMATION
-    
+    # ============================================================
 
     @staticmethod
     def estimate_tokens(messages):
         """
         Lightweight token estimation.
-
-        We intentionally avoid requiring a tokenizer dependency.
 
         Approximation:
             tokens ~= number of words * 1.3
@@ -80,20 +76,20 @@ class ContextManager:
 
         return int(len(words) * 1.3)
 
-    
+    # ============================================================
     # 1. SLIDING WINDOW
-    
+    # ============================================================
 
     def sliding_window(self):
         """
         Keep only the most recent N observations.
         """
 
-        return self.history[-self.window_size:]
+        return list(self.history[-self.window_size:])
 
-    
+    # ============================================================
     # 2. OBSERVATION MASKING
-    
+    # ============================================================
 
     def observation_masking(self):
         """
@@ -110,7 +106,7 @@ class ContextManager:
             # Email
             text = text.replace("@", "[EMAIL]")
 
-            # Phone number prefix
+            # Egyptian phone prefix
             text = text.replace("+20", "[PHONE]")
 
             # Payment information
@@ -124,16 +120,14 @@ class ContextManager:
 
         return masked_context
 
-    
+    # ============================================================
     # 3. RECURSIVE SUMMARIZATION
-    
+    # ============================================================
 
     def recursive_summarization(self):
         """
-        Compress older observations while preserving recent context.
-
-        Older observations are represented as a compact summary,
-        while the most recent observations remain unchanged.
+        Compress older observations while preserving
+        the most recent observations.
         """
 
         if len(self.history) <= self.recent_size:
@@ -161,9 +155,9 @@ class ContextManager:
 
         return [summary_message] + recent_messages
 
-    
+    # ============================================================
     # 4. ZONE-BASED PRUNING
-    
+    # ============================================================
 
     def zone_based_pruning(self):
         """
@@ -184,6 +178,7 @@ class ContextManager:
         """
 
         critical = []
+        normal = []
 
         critical_keywords = [
             "cancel",
@@ -213,30 +208,20 @@ class ContextManager:
                 for keyword in critical_keywords
             ):
                 critical.append(message)
+            else:
+                normal.append(message)
 
-        # Always preserve the most recent observations.
+        # Always preserve recent observations.
         recent = self.history[-self.recent_size:]
 
-        # Avoid duplicates.
-        result = []
-        seen = set()
+        return {
+            "important": critical,
+            "recent": recent
+        }
 
-        for message in critical + recent:
-
-            key = (
-                message["role"],
-                message["content"]
-            )
-
-            if key not in seen:
-                result.append(message)
-                seen.add(key)
-
-        return result
-
-    
+    # ============================================================
     # STRATEGY SELECTOR
-    
+    # ============================================================
 
     def apply_strategy(self, strategy):
         """
@@ -257,9 +242,9 @@ class ContextManager:
 
         return strategies[strategy]()
 
-    
+    # ============================================================
     # PERFORMANCE MEASUREMENT
-    
+    # ============================================================
 
     def evaluate_strategy(self, strategy):
         """
@@ -272,11 +257,22 @@ class ContextManager:
 
         latency = perf_counter() - start
 
-        tokens = self.estimate_tokens(result)
+        tokens = self.estimate_tokens(
+            result if isinstance(result, list)
+            else (
+                result.get("important", [])
+                + result.get("recent", [])
+            )
+        )
 
         return {
             "strategy": strategy,
-            "messages": len(result),
+            "messages": (
+                len(result)
+                if isinstance(result, list)
+                else len(result.get("important", []))
+                + len(result.get("recent", []))
+            ),
             "tokens": tokens,
             "latency_ms": round(latency * 1000, 4),
             "result": result
