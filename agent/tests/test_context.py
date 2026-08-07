@@ -67,7 +67,38 @@ def test_observation_masking():
 
     assert len(result) == 1
 
-    assert "[EMAIL]" in result[0]["content"]
+    assert (
+        "[EMAIL]"
+        in result[0]["content"]
+    )
+
+
+# ============================================================
+# Tool Output Masking Test
+# ============================================================
+
+def test_tool_output_masking():
+
+    manager = ContextManager()
+
+    large_tool_output = (
+        "Routine tool output. "
+        + ("status checked " * 100)
+    )
+
+    manager.add_message(
+        "tool",
+        large_tool_output
+    )
+
+    result = manager.observation_masking()
+
+    assert len(result) == 1
+
+    assert (
+        "[MASKED TOOL OUTPUT]"
+        in result[0]["content"]
+    )
 
 
 # ============================================================
@@ -88,14 +119,22 @@ def test_recursive_summarization():
             f"Message {i}"
         )
 
-    result = manager.recursive_summarization()
+    result = (
+        manager.recursive_summarization()
+    )
 
-    # One summary + five recent messages
-    assert isinstance(result, list)
+    # One summary + five recent messages.
+    assert isinstance(
+        result,
+        list
+    )
 
     assert len(result) == 6
 
-    assert result[0]["role"] == "system"
+    assert (
+        result[0]["role"]
+        == "system"
+    )
 
     assert (
         "Historical context summary:"
@@ -123,17 +162,24 @@ def test_zone_based_pruning():
         "Everything is normal."
     )
 
-    result = manager.zone_based_pruning()
+    result = (
+        manager.zone_based_pruning()
+    )
 
     # The result contains two zones.
-    assert isinstance(result, dict)
+    assert isinstance(
+        result,
+        dict
+    )
 
     assert "important" in result
 
     assert "recent" in result
 
     # The maintenance message must be preserved.
-    assert len(result["important"]) == 1
+    assert len(
+        result["important"]
+    ) == 1
 
     assert (
         "maintenance"
@@ -142,26 +188,93 @@ def test_zone_based_pruning():
 
 
 # ============================================================
-# Invalid Configuration Test
+# Apply Strategy Test
+# ============================================================
+
+def test_apply_strategy():
+
+    manager = ContextManager(
+        window_size=3
+    )
+
+    manager.add_message(
+        "user",
+        "Message 1"
+    )
+
+    manager.add_message(
+        "user",
+        "Message 2"
+    )
+
+    result = manager.apply_strategy(
+        "sliding_window"
+    )
+
+    assert isinstance(
+        result,
+        list
+    )
+
+    assert len(result) == 2
+
+
+# ============================================================
+# Invalid Strategy Test
+# ============================================================
+
+def test_invalid_strategy():
+
+    manager = ContextManager()
+
+    try:
+
+        manager.apply_strategy(
+            "invalid_strategy"
+        )
+
+        assert False
+
+    except ValueError:
+
+        assert True
+
+
+# ============================================================
+# Invalid Window Size Test
 # ============================================================
 
 def test_invalid_window_size():
 
     try:
-        ContextManager(window_size=0)
+
+        ContextManager(
+            window_size=0
+        )
+
         assert False
 
     except ValueError:
+
         assert True
 
+
+# ============================================================
+# Invalid Recent Size Test
+# ============================================================
 
 def test_invalid_recent_size():
 
     try:
-        ContextManager(recent_size=0)
+
+        ContextManager(
+            recent_size=0
+        )
+
         assert False
 
     except ValueError:
+
         assert True
 
 
@@ -174,21 +287,27 @@ def test_message_validation():
     manager = ContextManager()
 
     try:
+
         manager.add_message(
             123,
             "Hello"
         )
+
         assert False
 
     except TypeError:
+
         assert True
 
     try:
+
         manager.add_message(
             "user",
             123
         )
+
         assert False
 
     except TypeError:
+
         assert True
