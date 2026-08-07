@@ -1,4 +1,5 @@
 import sys
+from database import initialize_database
 from mcp_app import mcp
 
 # Register MCP components
@@ -9,6 +10,8 @@ import prompts
 
 def start_server():
     """Start the Blue Horizon MCP server."""
+
+    initialize_database()
 
     transport = "stdio"
 
@@ -30,8 +33,3 @@ def start_server():
         mcp.run(
             transport="stdio"
         )
-
-
-if __name__ == "__main__":
-    start_server()
-    
