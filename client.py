@@ -82,6 +82,8 @@ async def elicitation_callback(
 async def sampling_callback(
     context, params: types.CreateMessageRequestParams
 ) -> types.CreateMessageResult:
+    print("[sampling] Client received a sampling request.")
+
     try:
         import anthropic
     except ImportError:
