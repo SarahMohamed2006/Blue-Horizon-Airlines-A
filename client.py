@@ -222,17 +222,20 @@ async def run_demo(session: ClientSession):
 
     print("\n### 5) DEFENSIVE WRITE TOOL + ELICITATION: cancel_flight ###")
     if not caps["elicitation"]:
-        print("  [server did not declare elicitation - falling back to read-only mode]")
-    else:
-        try:
-            result = await session.call_tool(
-                "cancel_flight",
-                {"flight_number": "BH218", "reason": "severe weather at destination"},
-            )
-            print(f"  result -> {result.content}")
-        except Exception as e:
-            print(f"  [skipped - tool not implemented yet by teammates: {e}]")
-
+    print("  [server does not support elicitation - skipping cancel_flight demo]")
+else:
+    try:
+        result = await session.call_tool(
+            "cancel_flight",
+            {
+                "flight_id": 1,
+                "employee_id": 1,
+                "reason": "Severe weather at destination",
+            },
+        )
+        print(f"  result -> {result.content}")
+    except Exception as e:
+        print(f"  [skipped: {e}]")
     print("\n### 6) PROGRESS TRACKING: a long-running report tool ###")
     try:
         result = await session.call_tool(
