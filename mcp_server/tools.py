@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 from typing import Literal
+
 from database import get_connection
 from mcp.types import SamplingMessage, TextContent
 from mcp.server.fastmcp import Context
@@ -139,9 +140,11 @@ def assign_aircraft(data: AssignAircraftInput):
             """
             INSERT INTO FlightEvents
             (flight_id, event_type, severity, description, reported_at, status)
-            VALUES (?, 'Aircraft Assigned', 'Low',
-                    'Replacement aircraft assigned by operations.',
-                    CURRENT_TIMESTAMP, 'Closed')
+            VALUES (
+                ?, 'Aircraft Assigned', 'Low',
+                'Replacement aircraft assigned by operations.',
+                CURRENT_TIMESTAMP, 'Closed'
+            )
             """,
             (data.flight_id,)
         )
@@ -223,9 +226,11 @@ def assign_backup_crew(data: AssignBackupCrewInput):
             """
             INSERT INTO FlightEvents
             (flight_id, event_type, severity, description, reported_at, status)
-            VALUES (?, 'Backup Crew Assigned', 'Low',
-                    'Backup crew assigned by Flight Operations.',
-                    CURRENT_TIMESTAMP, 'Closed')
+            VALUES (
+                ?, 'Backup Crew Assigned', 'Low',
+                'Backup crew assigned by Flight Operations.',
+                CURRENT_TIMESTAMP, 'Closed'
+            )
             """,
             (data.flight_id,)
         )
@@ -265,7 +270,9 @@ def reschedule_flight(
         conn.execute(
             """
             UPDATE Flights
-            SET departure_time = ?, arrival_time = ?, status = 'Rescheduled'
+            SET departure_time = ?,
+                arrival_time = ?,
+                status = 'Rescheduled'
             WHERE flight_id = ?
             """,
             (new_departure, new_arrival, flight_id)
@@ -275,9 +282,11 @@ def reschedule_flight(
             """
             INSERT INTO FlightEvents
             (flight_id, event_type, severity, description, reported_at, status)
-            VALUES (?, 'Flight Rescheduled', 'Medium',
-                    'Flight schedule updated by Operations Control.',
-                    CURRENT_TIMESTAMP, 'Closed')
+            VALUES (
+                ?, 'Flight Rescheduled', 'Medium',
+                'Flight schedule updated by Operations Control.',
+                CURRENT_TIMESTAMP, 'Closed'
+            )
             """,
             (flight_id,)
         )
@@ -330,7 +339,10 @@ async def cancel_flight(data: CancelFlightInput, ctx: Context):
             """
             INSERT INTO FlightEvents
             (flight_id, event_type, severity, description, reported_at, status)
-            VALUES (?, 'Flight Cancelled', 'High', ?, CURRENT_TIMESTAMP, 'Closed')
+            VALUES (
+                ?, 'Flight Cancelled', 'High', ?,
+                CURRENT_TIMESTAMP, 'Closed'
+            )
             """,
             (data.flight_id, data.reason)
         )
@@ -381,6 +393,24 @@ def complete_maintenance(maintenance_id: int, employee_id: int):
             UPDATE Aircraft
             SET status = 'Available'
             WHERE aircraft_id = ?
+            """,
+            (maintenance["aircraft_id"],)
+        )
+
+        conn.execute(
+            """
+            INSERT INTO FlightEvents
+            (flight_id, event_type, severity, description, reported_at, status)
+            SELECT
+                flight_id,
+                'Maintenance Completed',
+                'Low',
+                'Aircraft maintenance completed.',
+                CURRENT_TIMESTAMP,
+                'Closed'
+            FROM Flights
+            WHERE aircraft_id = ?
+            LIMIT 1
             """,
             (maintenance["aircraft_id"],)
         )
@@ -522,7 +552,7 @@ async def resolve_operational_issue(
                 SELECT crew_id
                 FROM Crew
                 WHERE availability = 1
-                AND hours_flown_today < 8
+                  AND hours_flown_today < 8
                 LIMIT 1
                 """
             ).fetchone()
@@ -539,7 +569,10 @@ async def resolve_operational_issue(
         )
 
     elif decision == "Continue Operations":
-        result = {"success": True, "message": "Operations continued"}
+        result = {
+            "success": True,
+            "message": "Operations continued"
+        }
 
     else:
         return {
@@ -573,8 +606,11 @@ async def generate_operations_report(ctx: Context):
     with db() as conn:
         flights = conn.execute(
             """
-            SELECT flight_id, flight_number,
-                   destination_airport_id, aircraft_id
+            SELECT
+                flight_id,
+                flight_number,
+                destination_airport_id,
+                aircraft_id
             FROM Flights
             WHERE status NOT IN ('Completed', 'Cancelled')
             ORDER BY flight_id
@@ -598,7 +634,8 @@ async def generate_operations_report(ctx: Context):
                 """
                 SELECT c.name, c.role
                 FROM Crew c
-                JOIN FlightCrew fc ON c.crew_id = fc.crew_id
+                JOIN FlightCrew fc
+                    ON c.crew_id = fc.crew_id
                 WHERE fc.flight_id = ?
                 """,
                 (flight["flight_id"],)
