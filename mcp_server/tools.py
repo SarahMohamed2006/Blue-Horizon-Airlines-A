@@ -130,7 +130,11 @@ def assign_aircraft(data: AssignAircraftInput):
 # Assign Backup Crew
 # ---------------------------------------------------------------------------
 @mcp.tool()
-def assign_backup_crew(flight_id: int, crew_id: int, employee_id: int):
+def assign_backup_crew(data: AssignBackupCrewInput):
+
+    flight_id = data.flight_id
+    crew_id = data.crew_id
+    employee_id = data.employee_id
     """
     Assign a crew member to a flight. Requires an authorized employee
     and an authenticated session.
