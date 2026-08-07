@@ -13,6 +13,12 @@ from schemas import (
     AssignBackupCrewInput,
 )
 
+# Import Operational RAG Pipeline for Task 3
+from rag_pipeline import OperationalRAGPipeline
+
+# Initialize RAG Engine Instance
+rag_engine = OperationalRAGPipeline()
+
 
 DecisionType = Literal[
     "Cancel Flight",
@@ -75,6 +81,29 @@ def get_flight(conn, flight_id):
     return flight, None
 
 
+# =====================================================================
+# TASK 3 RAG TOOL INTEGRATION
+# =====================================================================
+@mcp.tool()
+def search_operational_policies(query: str) -> str:
+    """
+    Search official Blue Horizon Airlines operational manuals, maintenance guidelines, 
+    and crew reassignment policies using RAG and Self-RAG verification.
+    """
+    retrieved_chunks = rag_engine.hybrid_search(query, top_k=3)
+    
+    # Self-RAG Verification Check to ensure facts are grounded
+    is_valid = rag_engine.self_rag_verification(query, retrieved_chunks)
+    
+    if is_valid:
+        return "\n---\n".join(retrieved_chunks)
+    else:
+        return "No relevant operational policy matching the issue was found."
+
+
+# =====================================================================
+# EXISTING MCP TOOLS
+# =====================================================================
 @mcp.tool()
 def assign_aircraft(data: AssignAircraftInput):
     if error := auth_error():
