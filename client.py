@@ -170,12 +170,12 @@ async def progress_callback(progress: float, total: float | None, message: str |
 def check_capabilities(init_result: types.InitializeResult) -> dict:
     caps = init_result.capabilities
     supported = {
-    "tools": caps.tools is not None,
-    "resources": caps.resources is not None,
-    "prompts": caps.prompts is not None,
-    "logging": caps.logging is not None,
-    "elicitation": hasattr(caps, "elicitation"),
-    "sampling": hasattr(caps, "sampling"),
+      "tools": caps.tools is not None,
+      "resources": caps.resources is not None,
+      "prompts": caps.prompts is not None,
+      "logging": caps.logging is not None,
+      "elicitation": hasattr(caps, "elicitation"),
+      "sampling": hasattr(caps, "sampling"),
 }
     print("\n[capability negotiation] server declared:")
     for k, v in supported.items():
