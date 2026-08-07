@@ -223,7 +223,8 @@ async def run_demo(session: ClientSession):
     print(f"  visible tools: {[t.name for t in tools.tools]}")
 
     print("\n### 5) DEFENSIVE WRITE TOOL + ELICITATION: cancel_flight ###")
-    if not caps["elicitation"]:
+
+if not caps["elicitation"]:
     print("  [server does not support elicitation - skipping cancel_flight demo]")
 else:
     try:
@@ -238,6 +239,7 @@ else:
         print(f"  result -> {result.content}")
     except Exception as e:
         print(f"  [skipped: {e}]")
+
     print("\n### 6) PROGRESS TRACKING: a long-running report tool ###")
     try:
         result = await session.call_tool(
