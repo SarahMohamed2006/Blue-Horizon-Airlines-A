@@ -148,185 +148,154 @@ class ContextManager:
 
         return masked_context
         
-# ============================================================
-# 3. RECURSIVE SUMMARIZATION
-# ============================================================
+    # ============================================================
+    # 3. RECURSIVE SUMMARIZATION
+    # ============================================================
 
-def _compact_message(self, message, max_words=20):
-    """
-    Create a compact deterministic summary of one message.
+    def _compact_message(self, message, max_words=20):
+        """
+        Create a compact deterministic summary of one message.
+        """
 
-    Important operational information is preserved while
-    routine tool output is heavily compressed.
-    """
+        role = message["role"]
+        text = str(message["content"]).strip()
 
-    role = message["role"]
-    text = str(message["content"]).strip()
+        if role.lower() == "tool":
+            critical_keywords = [
+                "cancel",
+                "cancelled",
+                "cancellation",
+                "delay",
+                "delayed",
+                "maintenance",
+                "emergency",
+                "aircraft",
+                "backup",
+                "crew",
+                "assign",
+                "assigned",
+                "weather",
+                "reschedule",
+                "safety",
+                "fuel",
+                "divert",
+                "gate",
+                "outage",
+                "closure"
+            ]
 
-    # Tool outputs are usually the main source of context bloat.
-    if role.lower() == "tool":
-        critical_keywords = [
-            "cancel",
-            "cancelled",
-            "cancellation",
-            "delay",
-            "delayed",
-            "maintenance",
-            "emergency",
-            "aircraft",
-            "backup",
-            "crew",
-            "assign",
-            "assigned",
-            "weather",
-            "reschedule",
-            "safety",
-            "fuel",
-            "divert",
-            "gate",
-            "outage",
-            "closure"
-        ]
+            lower_text = text.lower()
 
-        lower_text = text.lower()
+            if not any(
+                keyword in lower_text
+                for keyword in critical_keywords
+            ):
+                return f"{role}: routine tool output omitted"
 
-        # Keep only tool outputs containing operationally
-        # important information.
-        if not any(
-            keyword in lower_text
-            for keyword in critical_keywords
-        ):
-            return f"{role}: routine tool output omitted"
+        words = text.split()
 
-    words = text.split()
+        if len(words) <= max_words:
+            compact_text = text
+        else:
+            compact_text = " ".join(words[:max_words]) + "..."
 
-    if len(words) <= max_words:
-        compact_text = text
-    else:
-        compact_text = " ".join(words[:max_words]) + "..."
+        return f"{role}: {compact_text}"
 
-    return f"{role}: {compact_text}"
+    def _summarize_messages(self, messages):
+        """
+        Summarize a group of messages into a compact text block.
+        """
 
+        summaries = []
 
-def _summarize_messages(self, messages):
-    """
-    Summarize a group of messages into a compact text block.
-    """
+        for message in messages:
+            summaries.append(
+                self._compact_message(message)
+            )
 
-    summaries = []
+        return " | ".join(summaries)
 
-    for message in messages:
-        summaries.append(
-            self._compact_message(message)
-        )
+    def recursive_summarization(self):
+        """
+        Recursively compress older observations while preserving
+        recent observations.
+        """
 
-    return " | ".join(summaries)
+        if len(self.history) <= self.recent_size:
+            return list(self.history)
 
+        old_messages = self.history[:-self.recent_size]
+        recent_messages = self.history[-self.recent_size:]
 
-def recursive_summarization(self):
-    """
-    Recursively compress older observations while preserving
-    recent observations.
-
-    The implementation uses deterministic hierarchical
-    summarization:
-
-        1. Older messages are divided into chunks.
-        2. Each chunk is compacted.
-        3. The compacted chunks are merged into one summary.
-        4. Recent messages are preserved unchanged.
-
-    This prevents the summary from simply copying the entire
-    original context.
-    """
-
-    if len(self.history) <= self.recent_size:
-        return list(self.history)
-
-    old_messages = self.history[:-self.recent_size]
-    recent_messages = self.history[-self.recent_size:]
-
-    # --------------------------------------------------------
-    # First summarization level
-    # --------------------------------------------------------
-
-    chunk_size = 5
-    chunk_summaries = []
-
-    for i in range(
-        0,
-        len(old_messages),
-        chunk_size
-    ):
-        chunk = old_messages[
-            i:i + chunk_size
-        ]
-
-        chunk_summary = self._summarize_messages(
-            chunk
-        )
-
-        chunk_summaries.append(
-            chunk_summary
-        )
-
-    # --------------------------------------------------------
-    # Recursive compression
-    # --------------------------------------------------------
-
-    while len(chunk_summaries) > 4:
-
-        compressed = []
+        chunk_size = 5
+        chunk_summaries = []
 
         for i in range(
             0,
-            len(chunk_summaries),
-            4
+            len(old_messages),
+            chunk_size
         ):
-
-            group = chunk_summaries[
-                i:i + 4
+            chunk = old_messages[
+                i:i + chunk_size
             ]
 
-            combined = " | ".join(group)
+            chunk_summary = self._summarize_messages(
+                chunk
+            )
 
-            words = combined.split()
+            chunk_summaries.append(
+                chunk_summary
+            )
 
-            # Keep the summary bounded.
-            if len(words) > 80:
-                combined = (
-                    " ".join(words[:80])
-                    + "..."
-                )
+        while len(chunk_summaries) > 4:
 
-            compressed.append(combined)
+            compressed = []
 
-        chunk_summaries = compressed
+            for i in range(
+                0,
+                len(chunk_summaries),
+                4
+            ):
+                group = chunk_summaries[
+                    i:i + 4
+                ]
 
-    summary_text = " | ".join(
-        chunk_summaries
-    )
+                combined = " | ".join(group)
+                words = combined.split()
 
-    # Final safety limit.
-    summary_words = summary_text.split()
+                if len(words) > 80:
+                    combined = (
+                        " ".join(words[:80])
+                        + "..."
+                    )
 
-    if len(summary_words) > 150:
-        summary_text = (
-            " ".join(summary_words[:150])
-            + "..."
+                compressed.append(combined)
+
+            chunk_summaries = compressed
+
+        summary_text = " | ".join(
+            chunk_summaries
         )
 
-    summary_message = {
-        "role": "system",
-        "content": (
-            "Historical context summary: "
-            + summary_text
-        )
-    }
+        summary_words = summary_text.split()
 
-    return [
-        summary_message
-    ] + recent_messages
+        if len(summary_words) > 150:
+            summary_text = (
+                " ".join(summary_words[:150])
+                + "..."
+            )
+
+        summary_message = {
+            "role": "system",
+            "content": (
+                "Historical context summary: "
+                + summary_text
+            )
+        }
+
+        return [
+            summary_message
+        ] + recent_messages
 
     # ============================================================
     # 4. ZONE-BASED PRUNING
@@ -334,15 +303,7 @@ def recursive_summarization(self):
 
     def zone_based_pruning(self):
         """
-        Divide context into:
-
-            important:
-                operationally critical observations
-
-            recent:
-                most recent observations
-
-        Critical operational information is preserved.
+        Divide context into important and recent zones.
         """
 
         important = []
@@ -375,7 +336,9 @@ def recursive_summarization(self):
 
         for message in self.history:
 
-            text = str(message["content"]).lower()
+            text = str(
+                message["content"]
+            ).lower()
 
             if any(
                 keyword in text
@@ -383,14 +346,11 @@ def recursive_summarization(self):
             ):
                 important.append(message)
 
-        # Always preserve recent observations.
         recent = list(
             self.history[-self.recent_size:]
         )
 
-        # Remove duplicates from important zone.
         unique_important = []
-
         seen = set()
 
         for message in important:
@@ -401,9 +361,7 @@ def recursive_summarization(self):
             )
 
             if key not in seen:
-
                 unique_important.append(message)
-
                 seen.add(key)
 
         return {
@@ -423,8 +381,10 @@ def recursive_summarization(self):
         strategies = {
             "sliding_window": self.sliding_window,
             "observation_masking": self.observation_masking,
-            "recursive_summarization": self.recursive_summarization,
-            "zone_based_pruning": self.zone_based_pruning,
+            "recursive_summarization":
+                self.recursive_summarization,
+            "zone_based_pruning":
+                self.zone_based_pruning,
         }
 
         if strategy not in strategies:
