@@ -2,9 +2,11 @@ import sys
 from pathlib import Path
 
 
-# Add the agent directory to Python path.
+# Add the agent/ directory to Python path.
+# context_manager.py lives in <project_root>/agent/, not the project
+# root itself, so we must point at parents[1] / "agent".
 sys.path.append(
-    str(Path(__file__).resolve().parents[1])
+    str(Path(__file__).resolve().parents[1] / "agent")
 )
 
 

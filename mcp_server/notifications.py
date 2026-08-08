@@ -151,9 +151,16 @@ async def authenticate_manager(
 # Helper
 # --------------------------------------------------------------------
 
-def deauthenticate_manager():
+@mcp.tool()
+async def deauthenticate_manager(ctx: Context):
+    """
+    Log out the currently authenticated Operations Manager.
+    Disables privileged write tools again.
+    """
 
     SessionState.authenticated_manager_id = None
+
+    await notify_tools_changed(ctx)
 
     return {
         "success": True,

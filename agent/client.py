@@ -8,9 +8,13 @@ from mcp.client.streamable_http import streamablehttp_client
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(BASE_DIR)
 
+# mcp_server/ is a sibling of agent/ (both live under the project root),
+# not a subdirectory of agent/ — the previous path pointed at
+# agent/mcp_server/server.py, which never existed.
 SERVER_SCRIPT_PATH = os.path.join(
-    BASE_DIR,
+    PROJECT_ROOT,
     "mcp_server",
     "server.py"
 )
@@ -201,7 +205,7 @@ async def main():
 
     else:
         server_params = StdioServerParameters(
-            command="python",
+            command=sys.executable,
             args=[SERVER_SCRIPT_PATH],
         )
 

@@ -33,17 +33,33 @@ class MemoryManager:
                 decision["metadata"]
             )
 
-            self.consolidation.consolidate()
-
+            # NOTE: consolidation is intentionally NOT triggered here.
+            # The promote-or-drop router only ever writes to episodic
+            # memory. Semantic memory is built exclusively by a separate,
+            # periodic consolidation pass — see run_consolidation() below.
             return {
                 "action": "promote",
                 "episode": episode,
-                "semantic": self.semantic.get_all()
+                "reason": decision["reason"],
             }
 
         return {
-            "action": "drop"
+            "action": "drop",
+            "reason": decision["reason"],
         }
+
+    def run_consolidation(self):
+        """
+        Separate, periodic consolidation pass over episodic memory.
+
+        This is the only path that writes to semantic memory. It should
+        be invoked on a schedule (e.g. a periodic job, or at natural
+        session boundaries) rather than after every promoted event, so
+        that consolidation can genuinely batch, version, and resolve
+        conflicts across multiple episodes rather than reacting to one
+        write at a time.
+        """
+        return self.consolidation.consolidate()
 
     def recall(self, key):
         return self.semantic.get(key)

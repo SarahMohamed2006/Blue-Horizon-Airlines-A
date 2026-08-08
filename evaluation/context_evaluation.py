@@ -1,4 +1,15 @@
+import os
+import sys
 import time
+
+# context_manager.py lives in <project_root>/agent/, not in evaluation/,
+# so it has to be added to sys.path explicitly before it can be imported.
+sys.path.append(
+    os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "agent",
+    )
+)
 
 from context_manager import ContextManager
 
