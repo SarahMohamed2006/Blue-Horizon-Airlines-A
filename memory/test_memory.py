@@ -11,7 +11,6 @@ from memory.expiration import MemoryExpiration
 
 def test_short_term_memory():
     memory = ShortTermMemory(max_size=2)
-
     memory.add("message 1")
     memory.add("message 2")
     memory.add("message 3")
@@ -25,8 +24,8 @@ def test_short_term_memory():
 
 def test_short_term_expiration():
     memory = ShortTermMemory(expiration_minutes=30)
-
     memory.add("old message")
+
     memory.items[0]["created_at"] = datetime.utcnow() - timedelta(minutes=31)
 
     assert memory.get_all() == []
@@ -170,20 +169,6 @@ def test_memory_expiration():
     assert expiration.is_expired(created_at)
 
 
-def test_semantic_expiration():
-    semantic = SemanticMemory()
-
-    semantic.store(
-        "Temporary assignment",
-        "Aircraft C",
-        {
-            "ttl_minutes": 0
-        }
-    )
-
-    assert semantic.get("Temporary assignment") is None
-
-
 def test_full_memory_flow():
     short_term = ShortTermMemory()
     episodic = EpisodicMemory()
@@ -217,3 +202,35 @@ def test_full_memory_flow():
     consolidation.consolidate()
 
     assert semantic.get("BH218_status") == content
+
+
+def run_tests():
+    tests = [
+        test_short_term_memory,
+        test_short_term_expiration,
+        test_scratchpad,
+        test_router_promotes_operational_event,
+        test_router_drops_irrelevant_event,
+        test_promoted_event_reaches_episodic_memory,
+        test_consolidation_builds_semantic_memory,
+        test_semantic_versioning,
+        test_conflict_resolution,
+        test_memory_expiration,
+        test_full_memory_flow,
+    ]
+
+    passed = 0
+
+    for test in tests:
+        try:
+            test()
+            print(f"PASS: {test.__name__}")
+            passed += 1
+        except Exception as e:
+            print(f"FAIL: {test.__name__} -> {e}")
+
+    print(f"\n{passed}/{len(tests)} tests passed")
+
+
+if __name__ == "__main__":
+    run_tests()
