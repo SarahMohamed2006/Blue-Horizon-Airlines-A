@@ -56,3 +56,29 @@ class MemoryManager:
 
     def get_semantic(self):
         return self.semantic.get_all()
+from memory.manager import MemoryManager
+
+
+def test_memory_manager_flow():
+    manager = MemoryManager()
+
+    result = manager.remember(
+        "Flight BH218 was delayed because of weather",
+        {"key": "BH218_status"}
+    )
+
+    assert result["action"] == "promote"
+    assert manager.recall("BH218_status") == (
+        "Flight BH218 was delayed because of weather"
+    )
+
+
+def test_memory_manager_drops_irrelevant_information():
+    manager = MemoryManager()
+
+    result = manager.remember(
+        "Hello, how are you?"
+    )
+
+    assert result["action"] == "drop"
+    assert manager.get_episodes() == []
