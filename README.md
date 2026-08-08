@@ -214,3 +214,69 @@ requires elicitation, rather than hanging indefinitely. `create_operation_decisi
 degrades similarly if sampling isn't supported — it records
 `"(risk assessment unavailable: ...)"` and still saves the decision, rather
 than blocking the whole write on an optional capability.
+
+## Long-Context Management & Evaluation
+
+The Blue Horizon Airlines Operations Agent includes a Context Manager for handling long conversation histories efficiently.
+
+### Supported Strategies
+
+The Context Manager implements four strategies:
+
+1. **Sliding Window**
+2. **Observation and Tool-Output Masking**
+3. **Recursive Summarization**
+4. **Zone-Based Pruning**
+
+### Evaluation
+
+Four long-context airline scenarios were used:
+
+- Weather Delay
+- Maintenance Issue
+- Crew Reassignment
+- Flight Cancellation
+
+Each scenario contains important operational information followed by routine tool-output noise.
+
+The strategies were evaluated using:
+
+- **Accuracy** – preservation of expected operational information.
+- **Tokens** – estimated size of the resulting context.
+- **Latency** – time required to apply the strategy.
+
+### Results
+
+| Strategy | Avg Accuracy | Avg Tokens | Avg Latency (ms) |
+|---|---:|---:|---:|
+| Sliding Window | 0.625 | 623.2 | 0.002 |
+| Observation Masking | 1.000 | 609.5 | 0.089 |
+| Recursive Summarization | 1.000 | 384.0 | 0.336 |
+| Zone-Based Pruning | 1.000 | 3630.0 | 0.143 |
+
+### Best Strategy
+
+**Observation Masking** was selected as the best overall strategy.
+
+It achieved **100% average accuracy** while maintaining relatively low token usage and low latency.
+
+Recursive Summarization achieved the lowest token usage at 384 average tokens, but had higher latency.
+
+### Testing
+
+The Context Manager is covered by automated tests for:
+
+- Sliding Window
+- Observation Masking
+- Tool-Output Masking
+- Recursive Summarization
+- Zone-Based Pruning
+- Strategy Selection
+- Invalid Strategy Handling
+- Parameter Validation
+- Message Validation
+
+Test command:
+
+```bash
+pytest agent/tests/test_context.py -v
