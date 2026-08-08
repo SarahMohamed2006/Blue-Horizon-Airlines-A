@@ -12,7 +12,7 @@ class ShortTermMemory:
         self.items.append({
             "content": content,
             "metadata": metadata or {},
-            "created_at": datetime.utcnow()
+            "created_at": datetime.utcnow(),
         })
 
     def get_all(self):
@@ -26,9 +26,7 @@ class ShortTermMemory:
                 valid_items.append(item)
 
         self.items.clear()
-
-        for item in valid_items:
-            self.items.append(item)
+        self.items.extend(valid_items)
 
         return list(self.items)
 
